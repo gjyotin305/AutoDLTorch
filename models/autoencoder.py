@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+from ._convolution import ConvBlock
 
 class SimpleAutoEncoder(nn.Module):
     def __init__(
@@ -50,3 +50,51 @@ class AutoEncoder(nn.Module):
         out = self.out_model(x)
         return out
 
+
+class ConvAutoEncoder(nn.Module):
+    def __init__(
+        self, 
+        activation_fn: nn.Module,
+        conv_activation_fn: nn.Module,
+        in_channels: int,
+        out_channels: int,
+        hidden_channels: int,
+        kernel_size: int,
+        padding: int,
+        n_blocks_enc: int,
+    ):
+        super().__init__(ConvAutoEncoder, self)
+        self.conv_activation_fn = conv_activation_fn
+        self.activation_fn = activation_fn
+        self.enc_blocks = n_blocks_enc
+
+        self.input_enc = [
+            ConvBlock(
+                in_channels=in_channels,
+                out_channels=hidden_channels,
+                kernel_size=kernel_size,
+                padding=padding
+            )
+        ]
+
+        self.enc_list = [
+            ConvBlock(
+                in_channels=hidden_channels*(x+1), 
+                out_channels=hidden_channels*(x+2), 
+                kernel_size=kernel_size, 
+                padding=padding
+            ) for x in range(self.enc_blocks)
+        ]
+
+        self.input_enc.extend(self.enc_list)
+
+        self.conv_enc_block = nn.Sequential(*self.input_enc)
+
+        self.encoder = nn.Sequential(
+            
+        )
+        self.decoder = nn.Sequential(
+
+        )
+
+nn.ReLU()
