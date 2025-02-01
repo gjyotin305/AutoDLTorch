@@ -1,8 +1,6 @@
 import torch
 from typing import List
 import torch.nn as nn
-from ._convolution import ConvBlock
-
 class SimpleAutoEncoder(nn.Module):
     def __init__(
             self, 
