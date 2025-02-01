@@ -89,11 +89,7 @@ class ConvAutoEncoder(nn.Module):
 
         self.conv_enc_block = nn.Sequential(*self.input_enc)
 
-        self.encoder = nn.Sequential(
-
-        )
-        self.decoder = nn.Sequential(
-
-        )
+        self.encoder = nn.Sequential()
+        self.decoder = nn.Sequential()
 
 nn.ReLU()
