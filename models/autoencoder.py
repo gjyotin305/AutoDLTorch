@@ -91,5 +91,3 @@ class ConvAutoEncoder(nn.Module):
 
         self.encoder = nn.Sequential()
         self.decoder = nn.Sequential()
-
-nn.ReLU()
