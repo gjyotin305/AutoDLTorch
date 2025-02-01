@@ -57,7 +57,6 @@ class ConvAutoEncoder(nn.Module):
         activation_fn: nn.Module,
         conv_activation_fn: nn.Module,
         in_channels: int,
-        out_channels: int,
         hidden_channels: int,
         kernel_size: int,
         padding: int,
@@ -91,7 +90,7 @@ class ConvAutoEncoder(nn.Module):
         self.conv_enc_block = nn.Sequential(*self.input_enc)
 
         self.encoder = nn.Sequential(
-            
+
         )
         self.decoder = nn.Sequential(
 
