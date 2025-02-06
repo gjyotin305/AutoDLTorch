@@ -6,7 +6,11 @@
 - [x] MLP
 - [x] ANN/DNN
 - [x] AutoEncoders
-- [ ] Convultional Neural Networks
+- [ ] Convolutional Neural Networks
+    - [ ] ResNet
+    - [ ] Yolo
+    - [ ] RCNN
+    - [ ] MTCNN
 - [ ] Sequential Models (RNN/LSTM)
 - [ ] GANs
 - [ ] VAEs
