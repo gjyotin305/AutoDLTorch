@@ -1,5 +1,38 @@
 from typing import List
 import torch.nn as nn
+from ..convolutional.convolution import ConvBlock
+
+
+class ConvDecoderBlock(nn.Module):
+    def __init__(
+        self, 
+        in_dim, 
+        growth_rate,
+        kernel_size,
+        padding,
+        activation_fn
+    ):
+        super(ConvDecoderBlock, self).__init__()
+        self.act_fn = activation_fn
+        self.decoder_block = nn.Sequential(
+            nn.Upsample(
+                scale_factor=growth_rate, 
+                mode='bilinear', 
+                align_corners=True
+            ),
+            nn.Conv2d(
+                growth_rate*in_dim, 
+                growth_rate*in_dim, 
+                kernel_size=kernel_size, 
+                padding=padding
+            ),
+            nn.BatchNorm2d(growth_rate*in_dim),
+            self.act_fn
+        )
+
+    def forward(self, x):
+        out = self.encoder(x)
+        return out
 
 class SimpleAutoEncoder(nn.Module):
     def __init__(
@@ -66,12 +99,35 @@ class AutoEncoder(nn.Module):
 class ConvAutoEncoder(nn.Module):
     def __init__(
         self,
-        input_encoder_: List[nn.Module],
-        out_decoder_: List[nn.Module]
+        in_channels,
+        final_activation,
+        growth_rate,
+        n_layers,
+        kernel_size,
+        padding,
+        hidden_channel,
     ):
         super(ConvAutoEncoder, self).__init__()
-        self.encoder = nn.Sequential(*input_encoder_)
-        self.decoder = nn.Sequential(*out_decoder_)
+
+        self.encoder = nn.Sequential(
+            *[
+                nn.Sequential(
+                    ConvBlock(
+                        activation_fn=nn.ReLU(),
+                        in_channels=in_channels,
+                        out_channels=hidden_channel,
+                        kernel_size=kernel_size,
+                        padding=padding,
+                        batch_norm=True,
+                        pooling=None
+                    ),
+                    ConvBlock(
+                        activation_fn=nn.ReLU(),
+                        in_channels=
+                    )
+                ) for n in range(1, n_layers)
+            ]
+        )
     
     def forward(self, x):
         out = self.encoder(x)
