@@ -1,6 +1,6 @@
-import torch
 from typing import List
 import torch.nn as nn
+
 class SimpleAutoEncoder(nn.Module):
     def __init__(
             self, 
