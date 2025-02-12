@@ -8,13 +8,13 @@ class SimpleAutoEncoder(nn.Module):
             hidden_dim,
             n_layers
         ):
-        super().__init__(SimpleAutoEncoder, self)
+        super(SimpleAutoEncoder, self).__init__()
         self.in_model = nn.Linear(input_dim, hidden_dim)
         self.encoder = nn.Sequential(*[
-            nn.LazyLinear((1/n)*hidden_dim) for n in range(1, n_layers)
+            nn.LazyLinear(int((1/n)*hidden_dim)) for n in range(1, n_layers)
         ])
         self.decoder = nn.Sequential(*[
-            nn.LazyLinear((1/n)*hidden_dim) for n in range(n_layers-1, 0, -1)
+            nn.LazyLinear(int((1/n)*hidden_dim)) for n in range(n_layers-1, 0, -1)
         ])
         self.out_model = nn.LazyLinear(input_dim)
 
@@ -31,21 +31,21 @@ class AutoEncoder(nn.Module):
         self,
         input_dim,
         hidden_dim,
-        activation_fn,
+        activation_fn: nn.Module,
         n_layers
     ):
-        super().__init__(AutoEncoder, self)
+        super(AutoEncoder, self).__init__()
         self.in_model = nn.Linear(input_dim, hidden_dim)
         self.act_fn = activation_fn
         self.encoder = nn.Sequential(*[
             nn.Sequential(
-                nn.LazyLinear((1/n)*hidden_dim),
+                nn.LazyLinear(int((1/n)*hidden_dim)),
                 self.act_fn
             ) for n in range(1, n_layers)
         ])
         self.decoder = nn.Sequential(*[
             nn.Sequential(
-                nn.LazyLinear((1/n)*hidden_dim),
+                nn.LazyLinear(int((1/n)*hidden_dim)),
                 self.act_fn
             ) for n in range(n_layers-1, 0, -1)
         ])
@@ -55,9 +55,13 @@ class AutoEncoder(nn.Module):
         out = self.in_model(x)
         out = self.encoder(out)
         out = self.decoder(out)
-        out = self.out_model(x)
+        out = self.out_model(out)
         return out
 
+    def encoder_forward(self, x):
+        out = self.in_model(x)
+        out = self.encoder(x)
+        return out
 
 class ConvAutoEncoder(nn.Module):
     def __init__(
@@ -65,7 +69,7 @@ class ConvAutoEncoder(nn.Module):
         input_encoder_: List[nn.Module],
         out_decoder_: List[nn.Module]
     ):
-        super().__init__(ConvAutoEncoder, self)
+        super(ConvAutoEncoder, self).__init__()
         self.encoder = nn.Sequential(*input_encoder_)
         self.decoder = nn.Sequential(*out_decoder_)
     
