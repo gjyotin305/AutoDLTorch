@@ -21,8 +21,8 @@ class ConvDecoderBlock(nn.Module):
                 align_corners=True
             ),
             nn.Conv2d(
-                growth_rate*in_dim, 
-                growth_rate*in_dim, 
+                in_dim, 
+                int((1/growth_rate)*in_dim), 
                 kernel_size=kernel_size, 
                 padding=padding
             ),
@@ -104,26 +104,34 @@ class ConvAutoEncoder(nn.Module):
         growth_rate,
         n_layers,
         kernel_size,
-        padding,
-        hidden_channel,
+        padding
     ):
         super(ConvAutoEncoder, self).__init__()
-
+        
+        self.in_encoder = ConvBlock(
+            activation_fn=nn.ReLU(),
+            in_channels=in_channels,
+            out_channels=growth_rate,
+            kernel_size=kernel_size,
+            padding=padding
+        )
         self.encoder = nn.Sequential(
             *[
                 nn.Sequential(
                     ConvBlock(
                         activation_fn=nn.ReLU(),
-                        in_channels=in_channels,
-                        out_channels=hidden_channel,
+                        in_channels=growth_rate*n,
+                        out_channels=growth_rate*n,
                         kernel_size=kernel_size,
-                        padding=padding,
-                        batch_norm=True,
-                        pooling=None
+                        padding=padding
                     ),
                     ConvBlock(
                         activation_fn=nn.ReLU(),
-                        in_channels=
+                        in_channels=growth_rate*n,
+                        out_channels=growth_rate*(n+1),
+                        kernel_size=kernel_size,
+                        padding=padding,
+                        pooling=nn.MaxPool2d((growth_rate, growth_rate))
                     )
                 ) for n in range(1, n_layers)
             ]
