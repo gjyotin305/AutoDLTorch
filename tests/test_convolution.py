@@ -1,10 +1,8 @@
 import torch
-
-class TestConvBlock:
-    def test_full_pass(self):
-        pass
+from models.convolutional.convolution import CNN
 
 
 class TestCNN:
-    def test_full_pass(self):
-        pass
+    def test_full_pass_mnist(self, x):
+        x = torch.randn(size=(1, 28, 28))
+        

@@ -1,26 +1,37 @@
 import torch.nn as nn
 from .utils import ConvBlock
 
-class CNN(nn.Module):
+class CNN2DClassification(nn.Module):
     def __init__(
-        self, 
+        self,
         in_channels: int,
         growth_rate: int,
-        hid_dim: int, 
-        out_dim: int,
         kernel_size: int,
         padding: int,
         n_layers: int,
+        pool_kernel,
         n_classes: int,
-        pooling: nn.Module,
         act_fn: nn.Module = nn.ReLU(),
     ):
-        super(CNN, self).__init__()
+        super(CNN2DClassification, self).__init__()
         self.in_channels = in_channels
-        self.conv_block = nn.Conv2d(
-            in_channels=in_channels,
-            out_channels=
-        )
+        self.growth_rate = growth_rate
+        self.padding = padding
+        self.kernel_size = kernel_size
+        self.act_fn = act_fn
+        self.n_layers = n_layers
+        self.n_classes = n_classes
+        self.pool_kernel = pool_kernel
+
+
+    def _make_conv_block(self):
+        """
+        AutoCreate Ideal Combination
+        """
+        raise NotImplementedError
+        
+        
+
 
     def forward(self, x):
         """
