@@ -48,6 +48,12 @@ class ResNet(nn.Module):
         pass
 
 
+class DenseNet(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        pass
+
+
 class UNet(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -61,12 +67,6 @@ class InceptionNet(nn.Module):
 
 
 class MobileNet(nn.Module):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        pass
-
-
-class DenseNet(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         pass
