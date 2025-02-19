@@ -15,37 +15,12 @@ class CNN(nn.Module):
         pooling: nn.Module,
         act_fn: nn.Module = nn.ReLU(),
     ):
-        super().__init__(CNN, self)
+        super(CNN, self).__init__()
         self.in_channels = in_channels
-        self.n_layers = n_layers
-        self.out_dim = out_dim
-        self.hid_dim = hid_dim
-        self.k_size = kernel_size
-        self.padding = padding
-        self.start_conv = ConvBlock(
+        self.conv_block = nn.Conv2d(
             in_channels=in_channels,
-            out_channels=growth_rate,
-            kernel_size=kernel_size,
-            padding=padding,
-            activation_fn=act_fn,
-            pooling=pooling,
-            batch_norm=True
+            out_channels=
         )
-        self.conv_blocks = nn.Sequential(
-            *[
-                ConvBlock(
-                    in_channels=growth_rate*(n-1),
-                    out_channels=growth_rate*n,
-                    kernel_size=kernel_size,
-                    padding=padding,
-                    activation_fn=act_fn,
-                    pooling=pooling,
-                    batch_norm=True
-                )
-                for n in range(2, n_layers-1)
-            ]
-        )
-        self.fc = nn.LazyLinear(n_classes)
 
     def forward(self, x):
         """
