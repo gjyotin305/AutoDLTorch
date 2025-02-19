@@ -93,7 +93,7 @@ class AutoEncoder(nn.Module):
 
     def encoder_forward(self, x):
         out = self.in_model(x)
-        out = self.encoder(x)
+        out = self.encoder(out)
         return out
 
 class ConvAutoEncoder(nn.Module):
