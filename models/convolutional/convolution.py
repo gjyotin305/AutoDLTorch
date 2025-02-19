@@ -88,20 +88,3 @@ class CNN(nn.Module):
         out = self.conv_blocks(out)
         out = self.fc(out)
         return out
-
-
-class TinyResNet(nn.Module):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        pass
-
-
-class TinyDenseNet(nn.Module):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        pass
-
-
-class TinyUNet(nn.Module):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
