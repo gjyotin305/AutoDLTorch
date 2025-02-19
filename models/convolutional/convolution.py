@@ -2,6 +2,9 @@ import torch.nn as nn
 from .utils import ConvBlock
 
 class CNN2DClassification(nn.Module):
+    """
+    Best CNN out of all the below ones.
+    """
     def __init__(
         self,
         in_channels: int,
@@ -37,25 +40,21 @@ class CNN2DClassification(nn.Module):
         Rethink of a better way.
         """
         return NotImplementedError
-        # out = self.start_conv(x)
-        # out = self.conv_blocks(out)
-        # out = self.fc(out)
-        # return out
 
 
-class TinyResNet(nn.Module):
+class ResNet(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         pass
 
 
-class TinyUNet(nn.Module):
+class UNet(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         pass
 
 
-class TinyInceptionNet(nn.Module):
+class InceptionNet(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         pass
@@ -67,7 +66,7 @@ class MobileNet(nn.Module):
         pass
 
 
-class TinyDenseNet(nn.Module):
+class DenseNet(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         pass
