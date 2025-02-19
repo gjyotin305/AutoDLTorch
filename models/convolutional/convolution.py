@@ -84,7 +84,11 @@ class CNN(nn.Module):
         self.fc = nn.LazyLinear(n_classes)
 
     def forward(self, x):
-        out = self.start_conv(x)
-        out = self.conv_blocks(out)
-        out = self.fc(out)
-        return out
+        """
+        Rethink of a better way.
+        """
+        return NotImplementedError
+        # out = self.start_conv(x)
+        # out = self.conv_blocks(out)
+        # out = self.fc(out)
+        # return out
