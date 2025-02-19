@@ -30,7 +30,6 @@ class CNN2DClassification(nn.Module):
         """
         raise NotImplementedError
         
-        
 
 
     def forward(self, x):

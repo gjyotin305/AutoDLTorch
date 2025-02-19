@@ -14,7 +14,7 @@ class ConvBlock(nn.Module):
         pool_
     ):
         super(ConvBlock, self).__init__()
-        self.type_in = type
+        self.type_in = type_in
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
@@ -31,6 +31,7 @@ class ConvBlock(nn.Module):
                     in_channels=self.in_channels, 
                     out_channels=self.out_channels,
                     kernel_size=self.kernel_size,
+                    stride=self.stride,
                     padding=self.padding
                 ),
                 self.act_fn,
@@ -42,6 +43,7 @@ class ConvBlock(nn.Module):
                     in_channels=self.in_channels,
                     out_channels=self.out_channels,
                     kernel_size=self.kernel_size,
+                    stride=self.stride,
                     padding=self.padding
                 ),
                 self.act_fn
@@ -52,6 +54,7 @@ class ConvBlock(nn.Module):
                     in_channels=self.in_channels,
                     out_channels=self.out_channels,
                     kernel_size=self.kernel_size,
+                    stride=self.stride,
                     padding=self.padding
                 ),
                 self.act_fn,
@@ -63,6 +66,7 @@ class ConvBlock(nn.Module):
                     in_channels=self.in_channels,
                     out_channels=self.out_channels,
                     kernel_size=self.kernel_size,
+                    stride=self.stride,
                     padding=self.padding
                 ),
                 self.act_fn
