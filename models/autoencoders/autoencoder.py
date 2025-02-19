@@ -136,8 +136,33 @@ class ConvAutoEncoder(nn.Module):
                 ) for n in range(1, n_layers)
             ]
         )
+        self.decoder = nn.Sequential(
+            *[
+                nn.Sequential(
+                    ConvBlock(
+                        activation_fn=nn.ReLU(),
+                        in_channels=growth_rate*n,
+                        out_channels=growth_rate*n,
+                        kernel_size=kernel_size,
+                        padding=padding
+                    ),
+                    ConvBlock(
+                        activation_fn=nn.ReLU(),
+                        in_channels=growth_rate*n,
+                        out_channels=growth_rate*(n+1),
+                        kernel_size=kernel_size,
+                        padding=padding,
+                        pooling=nn.MaxPool2d((growth_rate, growth_rate))
+                    )
+                ) for n in range(1, n_layers)
+            ]
+        )
     
     def forward(self, x):
-        out = self.encoder(x)
-        out = self.decoder(out)
-        return out
+        """
+        To Be Implemented, Rethink Easier, better way to go about it.
+        """
+        return NotImplementedError
+        # out = self.encoder(x)
+        # out = self.decoder(out)
+        # return out
