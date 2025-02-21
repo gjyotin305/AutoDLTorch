@@ -11,7 +11,9 @@ class CNN2DClassification(nn.Module):
         growth_rate: int,
         kernel_size: int,
         padding: int,
-        n_layers: int,
+        n_layers_fc: int,
+        n_layers_conv: int,
+        hidden_dim: int,
         pool_kernel,
         n_classes: int,
         act_fn: nn.Module = nn.ReLU(),
@@ -22,10 +24,10 @@ class CNN2DClassification(nn.Module):
         self.padding = padding
         self.kernel_size = kernel_size
         self.act_fn = act_fn
-        self.n_layers = n_layers
+        self.n_layers_conv = n_layers_conv
+        self.n_layers_fc = n_layers_fc
         self.n_classes = n_classes
         self.pool_kernel = pool_kernel
-
 
     def _make_conv_block(self):
         """

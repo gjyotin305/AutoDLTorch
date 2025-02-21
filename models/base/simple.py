@@ -1,5 +1,33 @@
 import torch.nn as nn
 
+
+class LazyANN(nn.Module):
+    def __init__(
+        self, 
+        hidden_dim, 
+        out_dim,
+        act_fn
+    ):
+        super(LazyANN, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.out_dim = out_dim
+        self.act_fn = act_fn
+        self._make_block()
+
+    def _make_block(self):
+        self.model = nn.Sequential(
+            nn.LazyLinear(self.hidden_dim),
+            self.act_fn,
+            nn.LazyLinear(self.hidden_dim),
+            self.act_fn,
+            nn.LazyLinear(self.out_dim)
+        )
+        print("Model Constructed")
+    
+    def forward(self, x):
+        out = self.model(x)
+        return out
+
 class ANN(nn.Module):
     def __init__(
         self, 
