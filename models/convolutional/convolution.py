@@ -91,7 +91,7 @@ class CNN2DClassification(nn.Module):
         return out
 
 
-class Yolo(nn.Module):
+class YoLO(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         pass
