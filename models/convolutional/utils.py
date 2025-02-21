@@ -11,7 +11,7 @@ class ConvBlock(nn.Module):
         stride,
         padding,
         act_fn,
-        pool_
+        pool_ = None
     ):
         super(ConvBlock, self).__init__()
         self.type_in = type_in
