@@ -1,6 +1,33 @@
 import torch
 from models.convolutional.utils import ConvBlock
 from models.convolutional.convolution import CNN2DClassification
+from models.convolutional.resnet import BasicBlock
+
+
+class TestResNetBlock:
+    def test_full_pass(self):
+        x = torch.rand(size=(20, 3, 224, 224))
+        
+        in_conv = torch.nn.Conv2d(
+            in_channels=3, 
+            out_channels=16, 
+            kernel_size=3, 
+            padding=1
+        )
+
+        out = in_conv(x)
+
+        model = BasicBlock(
+            in_channel=16,
+            kernel_size=3,
+            padding=1
+        )
+
+        out = model.forward(out)
+
+        print(out.shape)
+
+        assert out.shape == (20, 3, 224, 224)
 
 
 class TestCNNBlock:
