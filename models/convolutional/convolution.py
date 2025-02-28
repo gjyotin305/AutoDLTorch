@@ -94,46 +94,40 @@ class CNN2DClassification(nn.Module):
 class YoLO(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        pass
+        raise NotImplementedError
 
 
 class RCNN(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        pass
-
-
-class ResNet(nn.Module):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        pass
+        raise NotImplementedError
 
 
 class DenseNet(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        pass
+        raise NotImplementedError
 
 
 class UNet(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        pass
+        raise NotImplementedError
 
 
 class InceptionNet(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        pass
+        raise NotImplementedError
 
 
 class MobileNet(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        pass
+        raise NotImplementedError
 
 
 class ConvNext(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        pass
+        raise NotImplementedError
