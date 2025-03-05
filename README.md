@@ -6,9 +6,9 @@
 - [x] MLP
 - [x] ANN/DNN
 - [x] AutoEncoders
-- [ ] Convolutional Neural Networks
-    - [ ] ResNet
-    - [ ] Yolo
+- [x] Convolutional Neural Networks
+    - [x] ResNet
+    - [x] Yolo
     - [ ] RCNN
     - [ ] MTCNN
 - [ ] Sequential Models (RNN/LSTM)
