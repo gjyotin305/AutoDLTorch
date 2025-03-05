@@ -1,33 +1,39 @@
 import torch
 from models.convolutional.utils import ConvBlock
 from models.convolutional.convolution import CNN2DClassification
-from models.convolutional.resnet import BasicBlock
+from models.convolutional.resnet import BasicBlock, ResNetArch
 
 
 class TestResNetBlock:
     def test_full_pass(self):
-        x = torch.rand(size=(20, 3, 224, 224))
-        
-        in_conv = torch.nn.Conv2d(
-            in_channels=3, 
-            out_channels=16, 
-            kernel_size=3, 
-            padding=1
-        )
-
-        out = in_conv(x)
-
+        x = torch.rand(size=(20, 16, 224, 224))
+    
         model = BasicBlock(
             in_channel=16,
             kernel_size=3,
             padding=1
         )
 
-        out = model.forward(out)
+        out = model.forward(x)
 
         print(out.shape)
 
-        assert out.shape == (20, 3, 224, 224)
+        assert out.shape == (20, 16, 224, 224)
+    
+    def test_full_resnet(self):
+        x = torch.rand(size=(20, 3, 224, 224))
+
+        model = ResNetArch(
+            num_blocks=2,
+            classifier_depth=2,
+            num_classes=10
+        )
+
+        out = model.forward(x)
+
+        print(out.shape)
+        
+        assert out.shape == (20, 10)
 
 
 class TestCNNBlock:
