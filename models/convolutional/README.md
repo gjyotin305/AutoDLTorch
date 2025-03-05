@@ -4,9 +4,9 @@
 
 - [x] CNN
 - [x] Resnet
-- [] YoLO
-- [] InceptionNet
-- [] MobileNet
+- [ ] YoLO
+- [ ] InceptionNet
+- [ ] MobileNet
 
 ## Some Notes on Convolutional Models
 
