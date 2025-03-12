@@ -20,11 +20,6 @@ class ElmanNetwork(nn.Module):
         
         return self.h2y(h)
 
-class RNNArch(nn.Module):
-    def __init__(self):
-        super().__init__()
-        raise NotImplementedError
-
 
 class GatedArch(nn.Module):
     def __init__(self, input_dim, recurrent_dim, output_dim):
