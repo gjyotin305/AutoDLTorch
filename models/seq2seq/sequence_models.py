@@ -15,7 +15,7 @@ class ElmanNetwork(nn.Module):
         # ht = ReLU(WxhXt + WhhHt-1 + Bh)
         h = x.new_zeros(x.size(0), self.h2y.weight.size(1))
         
-        for t in range(input.size(1)):
+        for t in range(x.size(1)):
             h = F.relu(self.x2h(x[:, t]) + self.h2h(h))
         
         return self.h2y(h)
@@ -53,7 +53,7 @@ class GatedArch(nn.Module):
         h0 = x.new_zeros(x.size(0), self.h2y.weight.size(1))
 
         for t in range(x.size(1)):
-            z = torch.sigmoid(self.x2z(x[:, t] + self.h2z(h0)))
+            z = torch.sigmoid(self.x2z(x[:, t]) + self.h2z(h0))
             hb = F.relu(self.x2h(x[:, t]) + self.h2h(h0))
             h0 = z*h0 + (1-z)*hb
         
