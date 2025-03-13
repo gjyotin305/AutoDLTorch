@@ -37,3 +37,12 @@ In self attention, we use similarities between the words and itself and everythi
 Whereas, in masked self attention we will only use the similarity between the words and itself and ignore everything that came after it.
 They can never look ahead at what comes next.
 
+### Multiheaded Attention
+
+If we apply the same self attention multiple times in a parallel fashion, with different weight matrices.
+
+Then concatenate the output from all attention heads and multiply with a weight matrix W0 that was trained jointly with the model, we get an output that captures information from all attention heads.
+
+![Image](https://jalammar.github.io/images/t/transformer_multi-headed_self-attention-recap.png)
+
+Credit: [Blog by Jay Alammar](https://jalammar.github.io/illustrated-transformer/)
