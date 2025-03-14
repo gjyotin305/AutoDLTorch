@@ -22,6 +22,4 @@ class PositionalEncoding(nn.Module):
         
         batch_size, seq_len, _ = x.size()
 
-        print(self.encoding[:seq_len, :].shape)
-
         return x + self.encoding[:seq_len, :]

@@ -14,4 +14,4 @@ class TestUtils:
 
         position_enc = pe(test)
 
-        print(position_enc.shape)
+        assert position_enc.shape == test.shape
