@@ -4,22 +4,17 @@ import torch.nn.functional as F
 from einops import rearrange
 
 class SelfAttention(nn.Module):
-    def __init__(self, d_model, row_dim, col_dim):
+    def __init__(self, d_model):
         super(SelfAttention, self).__init__()
         self.d_model = d_model
-        self.row_dim = row_dim
-        self.col_dim = col_dim
 
-        self.W_q = nn.Linear(self.d_model, self.d_model)
-        self.W_k = nn.Linear(self.d_model, self.d_model)
-        self.W_v = nn.Linear(self.d_model, self.d_model)
+        self.qkv_proj = nn.Linear(self.d_model, 3*self.d_model)
     
     def forward(self, x):
-        q = self.W_q(x)
-        k = self.W_k(x)
-        v = self.W_v(x)
+        qkv = self.qkv_proj(x)
+        q, k, v = qkv.chunk(3, dim=-1)
 
-        scaled_sims = q@k.T/torch.tensor(k.size(self.col_dim)**0.5)
+        scaled_sims = q@(k.transpose(-2, -1))/torch.tensor(k.size(-1)**0.5)
         attention_sim = F.softmax(scaled_sims)
         attention_scores = attention_sim@v
 
