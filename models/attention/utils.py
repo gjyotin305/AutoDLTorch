@@ -61,7 +61,7 @@ class MultiHeadAttention(nn.Module):
 
         self.W_o = nn.Linear(self.d_model, self.d_model)
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         qkv = self.qkv_proj(x)
         qkv = rearrange(
             qkv, "b s (h d) -> b h s d", h=self.num_heads, d=3*self.d_k
@@ -69,6 +69,10 @@ class MultiHeadAttention(nn.Module):
         q, k, v = qkv.chunk(3, dim=-1)
 
         scaled_sims = q@(k.transpose(-2, -1))/torch.tensor(q.size(-1)**0.5)
+
+        if mask is not None:
+            scaled_sims = scaled_sims.masked_fill(mask=mask, value=1e-20)
+
         attention_scores = F.softmax(scaled_sims)@v
         attention_scores = rearrange(attention_scores, "b h s d -> b s (h d)")
         
