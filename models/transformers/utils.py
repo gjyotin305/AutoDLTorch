@@ -1,6 +1,5 @@
 import torch 
 import torch.nn as nn
-import torch.nn.functional as F
 from einops import rearrange
 
 
@@ -23,3 +22,18 @@ class PositionalEncoding(nn.Module):
         batch_size, seq_len, _ = x.size()
 
         return x + self.encoding[:seq_len, :]
+
+
+class FeedForwardNetwork(nn.Module):
+    def __init__(self, d_model, d_hidden, drop_prob=0.1):
+        super(FeedForwardNetwork, self).__init__()
+        self.fcc = nn.Sequential(
+            nn.Linear(d_model, d_hidden),
+            nn.ReLU(),
+            nn.Linear(d_hidden, d_hidden),
+            nn.Dropout(drop_prob),
+            nn.Linear(d_hidden, d_model)
+        )
+    
+    def forward(self, x):
+        return self.fcc(x)
