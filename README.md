@@ -7,12 +7,8 @@
 - [x] ANN/DNN
 - [x] AutoEncoders
 - [x] Convolutional Neural Networks
-    - [x] ResNet
-    - [x] Yolo
-    - [ ] RCNN
-    - [ ] MTCNN
-- [ ] Sequential Models (RNN/LSTM)
+- [x] Sequential Models (RNN/LSTM/Gated Networks)
 - [ ] GANs
 - [ ] VAEs
-- [ ] Attention Networks (on RNN/ on LSTM/ Custom Addition)
-- [ ] Transformers
+- [x] Attention Networks (on RNN/ on LSTM/ Custom Addition)
+- [x] Transformers
