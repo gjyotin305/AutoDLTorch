@@ -1,9 +1,11 @@
-from ...utils import FeedForwardNetwork
-from ....attention.utils import (
+from .utils import FeedForwardNetwork
+from ..attention.utils import (
     MultiHeadAttention
 )
 import torch
 import torch.nn as nn
+
+torch.nn.functional.scaled_dot_product_attention
 
 class EncoderLayer(nn.Module):
     def __init__(self, d_model, d_hidden, n_head, drop_prob):

@@ -1,8 +1,8 @@
 import torch.nn as nn
-from ....attention.utils import (
+from ..attention.utils import (
     MultiHeadAttention
 )
-from ...utils import (
+from .utils import (
     FeedForwardNetwork
 )
 
