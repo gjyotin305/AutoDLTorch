@@ -5,8 +5,6 @@ from ..attention.utils import (
 import torch
 import torch.nn as nn
 
-torch.nn.functional.scaled_dot_product_attention
-
 class EncoderLayer(nn.Module):
     def __init__(self, d_model, d_hidden, n_head, drop_prob):
         super(EncoderLayer, self).__init__()
