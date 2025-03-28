@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+nn.CrossEntropyLoss()
+
 from models.attention.utils import (
     MultiHeadAttention,
     SelfAttention
