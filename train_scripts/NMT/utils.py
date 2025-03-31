@@ -28,13 +28,13 @@ class Vocab:
             "<sos>": '0',
             "<eos>": '1',
             "<unk>": '2',
-            "<pad>": '-1'
+            "<pad>": '3'
         }
         self.index2word = {
             '0': "<sos>",
             '1': "<eos>",
             '2': "<unk>",
-            '-1': "<pad>"
+            '3': "<pad>"
         }
         if lang == "en":
             self.tokenizer = Tokenizer(English().vocab)
@@ -104,13 +104,17 @@ class Vocab:
         if length is not None:
             if length > len(return_seq):
                 return_seq.append(1)
-                padded_sequence = [-1 for i in range(length+2 - len(return_seq))]
+                padded_sequence = [3 for i in range(length+2 - len(return_seq))]
                 return_seq.extend(padded_sequence)
             elif length < len(return_seq):
                 return_seq = return_seq[:length+1]
                 return_seq.append(1)
+            elif length == len(return_seq):
+                return_seq.append(1)
+                return_seq.append(3)
 
-            assert len(return_seq) == length+2 # <eos> + <sos> account for 2 tokens
+
+            assert len(return_seq) == length+2, f"Actual Length {len(return_seq)}" # <eos> + <sos> account for 2 tokens
         elif length is None:
             return_seq.append(1)
 
@@ -174,20 +178,20 @@ class English2HindiData(Dataset):
         return torch.LongTensor(list(map(int, X_ids))), torch.LongTensor(list(map(int, y_ids)))
 
 
-if __name__ == "__main__":
-    vocab_hi = Vocab(lang="hi")
-    vocab_hi.load_vocab(vocab_file="/home/gjyotin305/Desktop/AutoDLTorch/train_scripts/NMT/MT/hindi.train_saved_vocab.json")
-    vocab_en = Vocab(lang="en")
-    vocab_en.load_vocab(vocab_file="/home/gjyotin305/Desktop/AutoDLTorch/train_scripts/NMT/MT/english.train_saved_vocab.json")
+# if __name__ == "__main__":
+#     vocab_hi = Vocab(lang="hi")
+#     vocab_hi.load_vocab(vocab_file="/home/gjyotin305/Desktop/AutoDLTorch/train_scripts/NMT/MT/hindi.train_saved_vocab.json")
+#     vocab_en = Vocab(lang="en")
+#     vocab_en.load_vocab(vocab_file="/home/gjyotin305/Desktop/AutoDLTorch/train_scripts/NMT/MT/english.train_saved_vocab.json")
 
-    english2hindidata = English2HindiData(
-        folder_path="/home/gjyotin305/Desktop/AutoDLTorch/train_scripts/NMT/MT", split="train", vocab_en=vocab_en, vocab_hi=vocab_hi, 
-        max_length=50
-    )
+#     english2hindidata = English2HindiData(
+#         folder_path="/home/gjyotin305/Desktop/AutoDLTorch/train_scripts/NMT/MT", split="train", vocab_en=vocab_en, vocab_hi=vocab_hi, 
+#         max_length=50
+#     )
 
-    dataloader = DataLoader(english2hindidata, batch_size=32)
+#     dataloader = DataLoader(english2hindidata, batch_size=32)
 
-    for x in dataloader:
-        print(x[0].shape, x[1].shape)
-        break
+#     for x in dataloader:
+#         print(x[0].shape, x[1].shape)
+#         break
     
