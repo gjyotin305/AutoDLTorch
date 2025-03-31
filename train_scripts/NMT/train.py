@@ -6,33 +6,65 @@ import wandb
 from tqdm import tqdm
 from einops import rearrange
 from torchmetrics import Accuracy
+from spacy.lang.hi import Hindi
+from spacy.lang.en import English
+from spacy.tokenizer import Tokenizer
 from nltk.translate.bleu_score import sentence_bleu
 from utils import Vocab, English2HindiData
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-
-def translate_sentence(sentence, model, vocab: Vocab, tokenizer, max_len=50):
+def translate_sentence(
+    sentence: str, 
+    model: nn.Module, 
+    vocab_src: Vocab,
+    vocab_tgt: Vocab, 
+    tokenizer: Tokenizer, 
+    max_len=50
+):
     model.eval()
     tokens = tokenizer(sentence)
-    token_ids = [vocab.word2index["<sos>"]] + [vocab[token] for token in tokens] + [vocab.word2index["<eos>"]]
+    token_ids = [vocab_src.word2index["<sos>"]] + [vocab_src.word2index[token.text] for token in tokens] + [vocab_src.word2index["<eos>"]]
     src_tensor = torch.tensor(token_ids, dtype=torch.long).unsqueeze(1).to(device)
 
-    tgt_ids = [vocab.word2index["<sos>"]]
+    tgt_ids = [vocab_src.word2index["<sos>"]]
     for _ in range(max_len):
         tgt_tensor = torch.tensor(tgt_ids, dtype=torch.long).unsqueeze(1).to(device)
         with torch.no_grad():
             output = model.forward(src_tensor, tgt_tensor)
         next_token = output.argmax(2)[-1, 0].item()
         tgt_ids.append(next_token)
-        if next_token == vocab["<eos>"]:
+        if next_token == vocab_tgt.word2index["<eos>"]:
             break
 
-    translated_tokens = [list(vocab.get_stoi().keys())[idx] for idx in tgt_ids]
+    translated_tokens = [vocab_tgt.index2word[idx] for idx in tgt_ids]
     return " ".join(translated_tokens[1:-1])
 
-def eval_model():
-    pass
+
+def eval_model(model, tokenizer, vocab_src, vocab_tgt):
+    sentence_sample = "A black box in your car?"
+    candidate_sample = "आपकी कार में ब्लैक बॉक्स?"
+
+    pred_sample = translate_sentence(
+        model=model,
+        sentence=sentence_sample,
+        vocab_src=vocab_src,
+        vocab_tgt=vocab_tgt,
+        tokenizer=tokenizer
+    )
+
+    result = sentence_bleu(
+        pred_sample.split(), 
+        candidate_sample.split(), 
+        weights=(0.25, 0.25, 0.25, 0.25)
+    )
+
+    print(
+        f"Ground Truth {candidate_sample} | Predicted {pred_sample} | BLEU {result}"
+    )
+
+    return result
+
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=5000):
@@ -142,6 +174,14 @@ if __name__ == "__main__":
             "loss": avg_loss,
             "epoch": epoch
         })
+
+        if epoch+1%5 == 0:
+            eval_model(
+                model=model,
+                tokenizer=Tokenizer(English().vocab),
+                vocab_src=vocab_en,
+                vocab_tgt=vocab_hi
+            )
 
         if epoch+1 % 5 == 0:
             torch.save(model.state_dict(), f"transformer_epoch_{epoch+1}.pt")
