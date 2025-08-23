@@ -4,6 +4,7 @@ from torch.utils.data import Dataset, DataLoader
 from datasets import load_dataset
 from tqdm import tqdm
 import numpy as np
+from numba import jit, prange
 from dataclasses import dataclass
 
 @dataclass
@@ -73,21 +74,32 @@ class DataCollator(object):
         pad_token_id = self.tokenizer.pad_token_id
         batch_size = len(input_ids)
         
-        # Create padded arrays efficiently
         padded_input_ids = np.full((batch_size, max_len), pad_token_id, dtype=np.int64)
         padded_attention_masks = np.zeros((batch_size, max_len), dtype=np.int64)
         
-        # Fill in the actual sequences
-        for i, (ids, mask) in tqdm(enumerate(zip(input_ids, attention_masks))):
+        for i in tqdm(range(len(input_ids)), total=len(input_ids)):
+            ids = input_ids[i]
+            mask = attention_masks[i]
+
             seq_len = min(len(ids), max_len)
             padded_input_ids[i, :seq_len] = ids[:seq_len]
             padded_attention_masks[i, :seq_len] = mask[:seq_len]
-        
+   
         return {
             'input_ids': torch.from_numpy(padded_input_ids),
             'attention_mask': torch.from_numpy(padded_attention_masks)
         }
+    
+    @staticmethod
+    def save_torch_tensor(object_tensor, file_path):
+        torch.save(object_tensor, f'{file_path}.pt')
+        print('Saved')
+        print('Check')
+        loaded = torch.load(f'{file_path}.pt')
+        assert torch.allclose(loaded['input_ids'], object_tensor['input_ids']), "Not Same"
+        print("Correct")
 
+        
 class BaseTokenizedDataset(object):
     def __init__(self, tokenizer_model: str, dataset_name: str, prompt_template, split: str, conv_style: bool = True, text_col: str='text_tune') -> None:
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_model)
@@ -176,3 +188,7 @@ if __name__ == "__main__":
 
     check_tensor = check_collator.process_sequences_vectorized(batches=check.tokenized)
     print(check_tensor['input_ids'].shape, check_tensor['attention_mask'].shape)
+    check_collator.save_torch_tensor(
+        object_tensor=check_tensor,
+        file_path="train_alpaca"
+    )
