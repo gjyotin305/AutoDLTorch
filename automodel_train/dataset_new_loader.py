@@ -1,10 +1,10 @@
 from transformers import AutoTokenizer
 import torch
 from torch.utils.data import Dataset, DataLoader
+from torch.nn.utils.rnn import pad_sequence
 from datasets import load_dataset
 from tqdm import tqdm
 import numpy as np
-from numba import jit, prange
 from dataclasses import dataclass
 
 @dataclass
@@ -32,7 +32,8 @@ class InstructionDatasetConv:
         return messages
 
 
-class DataCollator(object):
+
+class DataCollator:
     """
     Pad Sequences to Max Length
     """
@@ -99,7 +100,7 @@ class DataCollator(object):
         assert torch.allclose(loaded['input_ids'], object_tensor['input_ids']), "Not Same"
         print("Correct")
 
-        
+
 class BaseTokenizedDataset(object):
     def __init__(self, tokenizer_model: str, dataset_name: str, prompt_template, split: str, conv_style: bool = True, text_col: str='text_tune') -> None:
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_model)
@@ -128,7 +129,6 @@ class BaseTokenizedDataset(object):
             conv.append(text_temp)
 
         return {f'{self.text_col}': conv}
-
 
     def get_text_column(self, split: str='train'): 
         if self.conv_style:
@@ -172,15 +172,11 @@ if __name__ == "__main__":
         prompt_template=InstructionDatasetConv,
         split='train'
     )
+   
     print(check.dataset['train'])
-    # print(check.dataset['train'][0])
-    # print(check.dataset['train'][0]['text_tune'])
+   
     print(check.tokenized)
-    # batches = check.tokenized
-    # for batch in batches:
-    #     print(batch['input_ids'], batch['attention_mask'])
-    #     break
-
+   
     check_collator = DataCollator(
         dataset=check.tokenized,
         tokenizer_str='Qwen/Qwen2.5-1.5B-Instruct'
