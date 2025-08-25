@@ -32,6 +32,35 @@ class InstructionDatasetConv:
         return messages
 
 
+class LMDataset(Dataset):
+    def __init__(self, bin_file_data: str, block_size: int = 1024) -> None:
+        super().__init__()
+        self.bin_file_data = bin_file_data
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.dataset = torch.load(self.bin_file_data)
+        self.block_size = block_size
+        self.max_dlen = self.dataset['input_ids'].shape[1]
+
+    def __len__(self):
+        return self.dataset['input_ids'].shape[0]
+    
+    def __getitem__(self, index):
+        input_ids = self.dataset['input_ids'][index]
+        attention_mask = self.dataset['attention_mask'][index]
+        
+        # Block_size
+        input_ids_fin = input_ids[:self.block_size]
+        labels = input_ids[1:self.block_size+1]
+        attention_mask = attention_mask[:self.block_size]
+
+        result = {
+            'input_ids': input_ids_fin.pin_memory().to(self.device, non_blocking=True),
+            'attention_mask':attention_mask.pin_memory().to(self.device, non_blocking=True),
+            'labels': labels.pin_memory().to(self.device, non_blocking=True)
+        }
+
+        return result
+
 
 class DataCollator:
     """
@@ -158,33 +187,51 @@ class BaseTokenizedDataset(object):
         )
         return tokenized_dataset
 
-class LMDataLoader(Dataset):
-    def __init__(self, train_file: str, test_file: str) -> None:
-        super().__init__()
-        self.train_file = train_file
-        self.test_file = test_file
-
 
 if __name__ == "__main__":
-    check = BaseTokenizedDataset(
-        tokenizer_model='Qwen/Qwen2.5-1.5B-Instruct',
-        dataset_name='tatsu-lab/alpaca',
-        prompt_template=InstructionDatasetConv,
-        split='train'
-    )
+    # check = BaseTokenizedDataset(
+    #     tokenizer_model='Qwen/Qwen2.5-1.5B-Instruct',
+    #     dataset_name='tatsu-lab/alpaca',
+    #     prompt_template=InstructionDatasetConv,
+    #     split='train'
+    # )
+
+    tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-1.5B-Instruct')
+
+    # print(check.dataset['train'])
    
-    print(check.dataset['train'])
+    # print(check.tokenized)
    
-    print(check.tokenized)
-   
-    check_collator = DataCollator(
-        dataset=check.tokenized,
-        tokenizer_str='Qwen/Qwen2.5-1.5B-Instruct'
+    # check_collator = DataCollator(
+    #     dataset=check.tokenized,
+    #     tokenizer_str='Qwen/Qwen2.5-1.5B-Instruct'
+    # )
+
+    # check_tensor = check_collator.process_sequences_vectorized(batches=check.tokenized)
+    # print(check_tensor['input_ids'].shape, check_tensor['attention_mask'].shape)
+    # check_collator.save_torch_tensor(
+    #     object_tensor=check_tensor,
+    #     file_path="train_alpaca"
+    # )
+
+    dataset = LMDataset(
+        bin_file_data="./train_alpaca.pt",
+        block_size=1024
     )
 
-    check_tensor = check_collator.process_sequences_vectorized(batches=check.tokenized)
-    print(check_tensor['input_ids'].shape, check_tensor['attention_mask'].shape)
-    check_collator.save_torch_tensor(
-        object_tensor=check_tensor,
-        file_path="train_alpaca"
-    )
+    print(tokenizer.eos_token_id, tokenizer.bos_token_id, tokenizer.pad_token_id)
+
+    for i, (res) in enumerate(dataset):
+        x, y, z = res['input_ids'], res['labels'], res['attention_mask']
+        print(x.shape, y.shape, z.shape)
+        check = x[:100].cpu().numpy().tolist()
+
+        print("="*100)
+        print(tokenizer.decode(check))
+        print("="*100)
+
+        print(x[:100], y[:100], z[:100])
+        if i == 2:
+            break
+
+        
