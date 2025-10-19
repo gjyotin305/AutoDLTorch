@@ -33,12 +33,14 @@ class InstructionDatasetConv:
 
 
 class LMDataset(Dataset):
-    def __init__(self, bin_file_data: str, block_size: int = 1024) -> None:
+    def __init__(self, tokenizer, bin_file_data: str, block_size: int = 1024) -> None:
         super().__init__()
         self.bin_file_data = bin_file_data
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.dataset = torch.load(self.bin_file_data)
         self.block_size = block_size
+        self.tokenizer = tokenizer
+        self.pad_token_id = self.tokenizer.pad_token_id 
         self.max_dlen = self.dataset['input_ids'].shape[1]
 
     def __len__(self):
@@ -47,16 +49,17 @@ class LMDataset(Dataset):
     def __getitem__(self, index):
         input_ids = self.dataset['input_ids'][index]
         attention_mask = self.dataset['attention_mask'][index]
-        
-        # Block_size
+
         input_ids_fin = input_ids[:self.block_size]
-        labels = input_ids[1:self.block_size+1]
+        labels = input_ids_fin.clone()
         attention_mask = attention_mask[:self.block_size]
 
+        labels.masked_fill_(input_ids_fin == self.pad_token_id, -100)
+
         result = {
-            'input_ids': input_ids_fin.pin_memory().to(self.device, non_blocking=True),
-            'attention_mask':attention_mask.pin_memory().to(self.device, non_blocking=True),
-            'labels': labels.pin_memory().to(self.device, non_blocking=True)
+            'input_ids': input_ids_fin.pin_memory().to(self.device),
+            'attention_mask':attention_mask.pin_memory().to(self.device),
+            'labels': labels.pin_memory().to(self.device)
         }
 
         return result
@@ -208,13 +211,16 @@ if __name__ == "__main__":
     # )
 
     # check_tensor = check_collator.process_sequences_vectorized(batches=check.tokenized)
+    
     # print(check_tensor['input_ids'].shape, check_tensor['attention_mask'].shape)
+    
     # check_collator.save_torch_tensor(
     #     object_tensor=check_tensor,
     #     file_path="train_alpaca"
     # )
 
     dataset = LMDataset(
+        tokenizer=tokenizer,
         bin_file_data="./train_alpaca.pt",
         block_size=1024
     )
@@ -222,16 +228,25 @@ if __name__ == "__main__":
     print(tokenizer.eos_token_id, tokenizer.bos_token_id, tokenizer.pad_token_id)
 
     for i, (res) in enumerate(dataset):
+        print('Check2')
         x, y, z = res['input_ids'], res['labels'], res['attention_mask']
         print(x.shape, y.shape, z.shape)
         check = x[:100].cpu().numpy().tolist()
 
         print("="*100)
-        print(tokenizer.decode(check))
+        # print(tokenizer.decode(check))
         print("="*100)
 
         print(x[:100], y[:100], z[:100])
         if i == 2:
             break
 
-        
+    check_loader = DataLoader(
+        dataset=dataset,
+        batch_size=2
+    )
+
+    for batch in check_loader:
+        print(batch)
+        print(batch['input_ids'].shape)
+        break
