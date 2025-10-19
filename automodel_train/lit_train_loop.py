@@ -6,6 +6,7 @@ import os
 from tqdm import tqdm
 from torch.utils.checkpoint import checkpoint
 import time
+# from unsloth import FastLanguageModel
 import deepspeed
 from torch.utils.data import DataLoader
 import torch
@@ -49,13 +50,12 @@ from dataset_new_loader import LMDataset
 class RunHyperParams:
     num_epochs: float = 1
     devices: int = 1 
-    log_interval: int = 10
+    log_interval: int = 20
     learning_rate: float = 1e-3
     batch_size: int = 8
     micro_batch_size: int = 1
     block_size: int = 1024
-    out_dir: str = 'lit_saves/lora'
-    max_iters: int = 1000
+    out_dir: str = 'lit_saves/lora_1'
     warmup_steps: int = 100
     epoch_size: int = 50000
 
@@ -95,30 +95,27 @@ def main():
     model = get_peft_model(peft_config=peft_conf, model=model)
     model.print_trainable_parameters()
 
-    # print(model.model.model.layers[0])
-    model = prepare_model_for_grad_ckpting(model, strategy='torch')
-    # for name, params in model.named_parameters():
-    #     print(name, params.shape, params.requires_grad)
-
     optimizer = torch.optim.AdamW(model.parameters(), lr=run_config.learning_rate)
     model, optimizer = fabric.setup(model, optimizer)
-    train(fabric, model, optimizer, train_loader, run_config.out_dir)
+    train(fabric, model, tokenizer, optimizer, train_loader, run_config.out_dir)
 
 
 def train(
     fabric,
     model,
+    tokenizer,
     optimizer,
     train_data,
     out_dir
 ):
-    
     iter_num = 0
 
     grad_accm_steps = run_config.batch_size // run_config.micro_batch_size
    
-    max_iters = run_config.num_epochs * run_config.epoch_size // run_config.micro_batch_size // run_config.devices
+    # max_iters = run_config.num_epochs * run_config.epoch_size // run_config.micro_batch_size // run_config.devices
+    max_iters = 100
 
+    print(f'Iters : {max_iters}')
     for batch in train_data:
 
         if iter_num <= run_config.warmup_steps:
@@ -146,6 +143,20 @@ def train(
 
         if iter_num == max_iters:
             break
+    
+    model.save_pretrained(out_dir, save_adapter=True, save_config=True)
+    tokenizer.save_pretrained(out_dir)
+
+    model.push_to_hub(f'gjyotin305/qwen2.5-check-litenv-1')
+    tokenizer.push_to_hub(f'gjyotin305/qwen2.5-check-litenv-1')
+
+# def merge_adapter(lora_adapter):
+#     model, tokenizer = FastLanguageModel.from_pretrained(
+#         model_name=lora_adapter, 
+#     )
+#     tokenizer.save_pretrained(lora_adapter)
+#     model.push_to_hub_merged(f"gjyotin305/check_litenv_merged", tokenizer, save_method='merged_16bit')
 
 if __name__ == "__main__":
     main()
+    # merge_adapter(run_config.out_dir)
