@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 import lightning as L
+import gdown
 from huggingface_hub import HfApi
 import os
 from tqdm import tqdm
@@ -111,6 +112,11 @@ def adapter_save(
 ):
     model.save_pretrained(exp_dir, save_adapter=True, save_config=True)
     tokenizer.save_pretrained(exp_dir)  
+
+    image_output = os.path.join("preview.png")
+
+    gdown.download(id='1P1GGlrrQAyhfoz4pLbGOJSIP3VA2RmZk', output=image_output, quiet=False)
+
     write_readme_experiment(
         exp_dir=exp_dir,
         title="gjyotin305 Experiment on LoRA finetuning",
@@ -128,7 +134,7 @@ def adapter_save(
             'pipeline_tag': 'text-generation',
             'base_model': ['Qwen/Qwen2.5-1.5B-Instruct'],
         },
-        image_path='/data/b22ai063/.red_team/image.png'
+        image_path='preview.png'
     )
    
     api.upload_folder(
