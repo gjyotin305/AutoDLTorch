@@ -2,12 +2,14 @@
 
 from dataclasses import dataclass
 import lightning as L
+from huggingface_hub import HfApi
 import os
 from tqdm import tqdm
 from torch.utils.checkpoint import checkpoint
 import time
 # from unsloth import FastLanguageModel
 import deepspeed
+from model_utils import write_readme_experiment
 from torch.utils.data import DataLoader
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
@@ -45,6 +47,8 @@ from dataset_new_loader import LMDataset
 #         raise NotImplementedError('DeepSpeed yet to be implemented')
     
 #     return model
+
+api = HfApi()
 
 @dataclass
 class RunHyperParams:
@@ -100,6 +104,40 @@ def main():
     train(fabric, model, tokenizer, optimizer, train_loader, run_config.out_dir)
 
 
+def adapter_save(
+    model,
+    tokenizer,
+    exp_dir
+):
+    model.save_pretrained(exp_dir, save_adapter=True, save_config=True)
+    tokenizer.save_pretrained(exp_dir)  
+    write_readme_experiment(
+        exp_dir=exp_dir,
+        title="gjyotin305 Experiment on LoRA finetuning",
+        description='testing',
+        metadata={
+            "model": "qwen2.5/qwen1.5b-instruct",
+            "dataset": "alpaca",
+            "max_iters": 100,
+            "learning_rate": 1e-3,
+            "notes": "Used LoRA peft implementation to save memory"
+        },
+        yaml_metadata={
+            'library_name': 'transformers',
+            'license': 'apache-2.0',
+            'pipeline_tag': 'text-generation'
+        },
+        image_path='/data/b22ai063/.red_team/image.png'
+    )
+   
+    api.upload_folder(
+        folder_path=exp_dir,
+        repo_id="gjyotin305/qwen2.5-check-litenv-1",
+        repo_type="model",
+    )
+
+
+
 def train(
     fabric,
     model,
@@ -144,11 +182,11 @@ def train(
         if iter_num == max_iters:
             break
     
-    model.save_pretrained(out_dir, save_adapter=True, save_config=True)
-    tokenizer.save_pretrained(out_dir)
-
-    model.push_to_hub(f'gjyotin305/qwen2.5-check-litenv-1')
-    tokenizer.push_to_hub(f'gjyotin305/qwen2.5-check-litenv-1')
+    adapter_save(
+        model,
+        tokenizer,
+        exp_dir=out_dir
+    )
 
 # def merge_adapter(lora_adapter):
 #     model, tokenizer = FastLanguageModel.from_pretrained(
