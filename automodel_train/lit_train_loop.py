@@ -125,7 +125,8 @@ def adapter_save(
         yaml_metadata={
             'library_name': 'transformers',
             'license': 'apache-2.0',
-            'pipeline_tag': 'text-generation'
+            'pipeline_tag': 'text-generation',
+            'base_model': ['Qwen/Qwen2.5-1.5B-Instruct'],
         },
         image_path='/data/b22ai063/.red_team/image.png'
     )
