@@ -165,7 +165,8 @@ def infer(model, tokenizer):
 def adapter_save(
     model,
     tokenizer,
-    exp_dir
+    exp_dir,
+    repo_name='sample-lora-qwen'
 ):
     model.save_pretrained(exp_dir, save_adapter=True, save_config=True)
     tokenizer.save_pretrained(exp_dir)  
@@ -195,14 +196,14 @@ def adapter_save(
     )
     
     repo_url = api.create_repo(
-        repo_id='gjyotin305/qwen2.5-check-litenv-merged',  # name of your repo
+        repo_id=f'{repo_name}',  # name of your repo
         private=False,
         repo_type="model",
         exist_ok=True,   # optional
     )
     api.upload_folder(
         folder_path=exp_dir,
-        repo_id="gjyotin305/qwen2.5-check-litenv-merged",
+        repo_id=f"{repo_name}",
         repo_type="model",
     )
 
