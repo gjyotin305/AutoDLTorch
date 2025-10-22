@@ -1,5 +1,5 @@
 # Lightning Fabric Rewrite
-
+import unsloth
 from dataclasses import dataclass
 import lightning as L
 import gdown
@@ -8,7 +8,7 @@ import os
 from tqdm import tqdm
 from torch.utils.checkpoint import checkpoint
 import time
-# from unsloth import FastLanguageModel
+from unsloth import FastLanguageModel
 import deepspeed
 from model_utils import write_readme_experiment
 from torch.utils.data import DataLoader
@@ -103,6 +103,35 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=run_config.learning_rate)
     model, optimizer = fabric.setup(model, optimizer)
     train(fabric, model, tokenizer, optimizer, train_loader, run_config.out_dir)
+    # infer(model, tokenizer)
+
+
+def infer(model, tokenizer):
+    messages = [
+        {"role": "system", "content": "You are an instruction following agent"},
+        {"role": "user",   "content": "## Instructions: Describe the life and reign of King Charles II."},
+    ]
+
+    # 3. Format the conversation into the model’s input format using the tokenizer’s chat template
+    formatted = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)  # the `add_generation_prompt=True` tells the model we expect assistant response next. :contentReference[oaicite:3]{index=3}
+
+    # 4. Tokenize and send to model
+    inputs = tokenizer(formatted, return_tensors="pt").to(model.device)
+
+    # 5. Generate a response
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=100,
+        do_sample=True,
+        top_p=0.9,
+        top_k=50,
+        temperature=0.8
+    )
+
+    # 6. Decode & display
+    generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    print(generated)
+    return generated
 
 
 def adapter_save(
@@ -113,12 +142,22 @@ def adapter_save(
     model.save_pretrained(exp_dir, save_adapter=True, save_config=True)
     tokenizer.save_pretrained(exp_dir)  
 
+    
+
+def merge_adapter(
+    exp_dir
+):
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        exp_dir,
+        load_in_16bit=True
+    )
+    model.save_pretrained_merged(f"{exp_dir}_merged", tokenizer, save_method='merged_16bit')
     image_output = os.path.join("preview.png")
 
     gdown.download(id='1P1GGlrrQAyhfoz4pLbGOJSIP3VA2RmZk', output=image_output, quiet=False)
 
     write_readme_experiment(
-        exp_dir=exp_dir,
+        exp_dir=f"{exp_dir}_merged",
         title="gjyotin305 Experiment on LoRA finetuning",
         description='testing',
         metadata={
@@ -136,13 +175,18 @@ def adapter_save(
         },
         image_path='preview.png'
     )
-   
+    
+    repo_url = api.create_repo(
+        repo_id='gjyotin305/qwen2.5-check-litenv-merged',  # name of your repo
+        private=False,
+        repo_type="model",
+        exist_ok=True,   # optional
+    )
     api.upload_folder(
-        folder_path=exp_dir,
-        repo_id="gjyotin305/qwen2.5-check-litenv-1",
+        folder_path=f"{exp_dir}_merged",
+        repo_id="gjyotin305/qwen2.5-check-litenv-merged",
         repo_type="model",
     )
-
 
 
 def train(
@@ -175,6 +219,8 @@ def train(
         loss = res.loss
         fabric.backward(loss)
 
+        fabric.clip_gradients(model, optimizer, clip_val=1.0)
+
         if (iter_num + 1) % grad_accm_steps == 0:
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
@@ -194,6 +240,7 @@ def train(
         tokenizer,
         exp_dir=out_dir
     )
+    merge_adapter(out_dir)
 
 # def merge_adapter(lora_adapter):
 #     model, tokenizer = FastLanguageModel.from_pretrained(

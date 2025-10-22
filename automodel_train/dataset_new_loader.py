@@ -32,6 +32,57 @@ class InstructionDatasetConv:
         return messages
 
 
+
+def find_subsequence_positions(input_ids: torch.Tensor, subseq: list[int]) -> list[int]:
+    """
+    Returns all start-indices where `subseq` appears in `input_ids`.
+    """
+    seq_len = input_ids.size(0)
+    sub_len = len(subseq)
+    starts = []
+    # sliding window
+    for i in range(seq_len - sub_len + 1):
+        if torch.all(input_ids[i : i+sub_len] == torch.tensor(subseq, device=input_ids.device)):
+            starts.append(i)
+    return starts
+
+def mask_system_to_assistant_labels(
+    input_ids: torch.Tensor,
+    labels:   torch.Tensor,
+    tokenizer
+) -> torch.Tensor:
+    # define your marker strings
+    system_token_str    = "<|im_start|>system"
+    assistant_token_str = "<|im_start|>assistant"
+
+    # tokenize each marker (into list of IDs)
+    system_ids    = tokenizer(system_token_str, add_special_tokens=False).input_ids
+    assistant_ids = tokenizer(assistant_token_str, add_special_tokens=False).input_ids
+
+    # find all positions where these appear
+    sys_starts    = find_subsequence_positions(input_ids, system_ids)
+    asst_starts   = find_subsequence_positions(input_ids, assistant_ids)
+
+    # If no system token found → nothing to mask or mask from start=0
+    if not sys_starts:
+        start = 0
+    else:
+        start = sys_starts[0]
+
+    # If no assistant token found → mask to end
+    if not asst_starts:
+        end = input_ids.size(0)
+    else:
+        # pick first assistant after the system marker
+        # ensure it's greater than start
+        end = next((pos for pos in asst_starts if pos > start), input_ids.size(0))
+
+    # Perform masking
+    labels = labels.clone()
+    labels[start : end] = -100
+    return labels
+
+
 class LMDataset(Dataset):
     def __init__(self, tokenizer, bin_file_data: str, block_size: int = 1024) -> None:
         super().__init__()
@@ -56,7 +107,9 @@ class LMDataset(Dataset):
 
         labels.masked_fill_(input_ids_fin == self.pad_token_id, -100)
 
-        result = {
+        labels = mask_system_to_assistant_labels(input_ids_fin, labels, self.tokenizer)
+
+        result = {  
             'input_ids': input_ids_fin.pin_memory().to(self.device),
             'attention_mask':attention_mask.pin_memory().to(self.device),
             'labels': labels.pin_memory().to(self.device)
@@ -225,7 +278,7 @@ if __name__ == "__main__":
         block_size=1024
     )
 
-    print(tokenizer.eos_token_id, tokenizer.bos_token_id, tokenizer.pad_token_id)
+    # print(tokenizer.eos_token_id, tokenizer.bos_token_id, tokenizer.pad_token_id)
 
     for i, (res) in enumerate(dataset):
         print('Check2')
@@ -234,19 +287,20 @@ if __name__ == "__main__":
         check = x[:100].cpu().numpy().tolist()
 
         print("="*100)
-        # print(tokenizer.decode(check))
+        tokens = tokenizer.convert_ids_to_tokens(check)
+        print(tokens)
         print("="*100)
 
         print(x[:100], y[:100], z[:100])
         if i == 2:
             break
 
-    check_loader = DataLoader(
-        dataset=dataset,
-        batch_size=2
-    )
+    # check_loader = DataLoader(
+    #     dataset=dataset,
+    #     batch_size=2
+    # )
 
-    for batch in check_loader:
-        print(batch)
-        print(batch['input_ids'].shape)
-        break
+    # for batch in check_loader:
+    #     print(batch)
+    #     print(batch['input_ids'].shape)
+    #     break
