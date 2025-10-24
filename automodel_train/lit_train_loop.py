@@ -6,47 +6,26 @@ import gdown
 from huggingface_hub import HfApi
 import os
 from tqdm import tqdm
+import pandas as pd
+import bitsandbytes as bnb
+import torchao
 from torch.utils.checkpoint import checkpoint
 import time
 import deepspeed
+from torch.profiler import profile, ProfilerActivity, record_function
 from model_utils import write_readme_experiment
 from torch.utils.data import DataLoader
 import torch
+from cut_cross_entropy import linear_cross_entropy
+from litgpt.utils import chunked_cross_entropy
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
 from peft import get_peft_model, LoraConfig, TaskType
 from typing import Literal
 from dataset_new_loader import LMDataset
 
-# class CheckpointedDeepSpeedTransformerLayer(torch.nn.Module):
-#     def __init__(self, layer):
-#         super().__init__()
-#         self.layer = layer
-    
-#     def forward(self, x, *args, **kwargs):
-#         # Use checkpoint for memory-efficient forward pass
-#         return deepspeed.checkpoint.checkpoint(
-#             self.layer, x, *args, **kwargs, use_reentrant=False
-#         )
 
-# def checkpoint_layer_forward(layer):
-#     """Wraps a layer's forward function with torch checkpoint."""
-#     original_forward = layer.forward
 
-#     def checkpointed_forward(*args, **kwargs):
-#         # wrap the original forward in checkpoint
-#         return checkpoint(original_forward, *args, **kwargs, use_reentrant=True)
-
-#     layer.forward = checkpointed_forward
-#     return layer 
-
-# def prepare_model_for_grad_ckpting(model, strategy: Literal['torch', 'deepspeed']):
-#     if strategy == 'torch':
-#         for layer in tqdm(model.model.model.layers[:10], desc=f'Applying grad ckpt {strategy}'):
-#             checkpoint_layer_forward(layer)
-#     elif strategy == 'deepspeed':
-#         raise NotImplementedError('DeepSpeed yet to be implemented')
-    
-#     return model
+activities = [ProfilerActivity.CPU, ProfilerActivity.CUDA]
 
 api = HfApi()
 
@@ -54,7 +33,7 @@ api = HfApi()
 class RunHyperParams:
     num_epochs: float = 1
     devices: int = 1 
-    log_interval: int = 20
+    log_interval: int = 2
     learning_rate: float = 1e-3
     batch_size: int = 8
     micro_batch_size: int = 1
@@ -67,7 +46,12 @@ run_config = RunHyperParams()
 
 def main():
 
-    fabric = L.Fabric(accelerator="cuda", devices=[0], precision="32")
+    fabric = L.Fabric(
+        accelerator="cuda", 
+        devices=[0,1], 
+        strategy='ddp',
+        precision="bf16-true"
+    )
     fabric.launch()
     fabric.seed_everything(1337 + fabric.global_rank)
 
@@ -99,10 +83,17 @@ def main():
     model = get_peft_model(peft_config=peft_conf, model=model)
     model.print_trainable_parameters()
 
+    # model = cce_patch(model)
+
+    train_loader = fabric.setup_dataloaders(train_loader)
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=run_config.learning_rate)
+    # optimizer = torchao.optim.AdamW8bit(model.parameters())
+    # optimizer = torchao.optim.CPUOffloadOptimizer(model.parameters(), fused=True)
+    # optimizer = bnb.optim.Adam8bit(model.parameters(), lr=run_config.learning_rate, min_8bit_size=4096, is_paged=False)
     model, optimizer = fabric.setup(model, optimizer)
     train(fabric, model, tokenizer, optimizer, train_loader, run_config.out_dir)
-    # infer(model, tokenizer)
+    infer(model, tokenizer)
 
 def infer_standalone(exp_dir):
     model = AutoModelForCausalLM.from_pretrained(exp_dir)
@@ -166,7 +157,7 @@ def adapter_save(
     model,
     tokenizer,
     exp_dir,
-    repo_name='sample-lora-qwen'
+    repo_name='gjyotin305/sample-lora-qwen'
 ):
     model.save_pretrained(exp_dir, save_adapter=True, save_config=True)
     tokenizer.save_pretrained(exp_dir)  
@@ -223,7 +214,7 @@ def train(
     # max_iters = run_config.num_epochs * run_config.epoch_size // run_config.micro_batch_size // run_config.devices
     max_iters = 100
 
-    print(f'Iters : {max_iters}')
+    fabric.print(f'Iters : {max_iters}')
     for batch in train_data:
 
         if iter_num <= run_config.warmup_steps:
@@ -232,18 +223,30 @@ def train(
                 param_group['lr'] = lr
         
         d0 = time.time()
-
         input_ids, labels, attention_masks = batch['input_ids'], batch['labels'], batch['attention_mask']   
-        res = model.forward(input_ids=input_ids, attention_masks=attention_masks, labels=labels)
-        loss = res.loss
-        fabric.backward(loss)
-
-        fabric.clip_gradients(model, optimizer, clip_val=1.0)
-
-        if (iter_num + 1) % grad_accm_steps == 0:
-            optimizer.step()
-            optimizer.zero_grad(set_to_none=True)
             
+        with profile(activities=activities, profile_memory=True, record_shapes=True) as prof:
+            res = model.forward(input_ids=input_ids, attention_masks=attention_masks, labels=labels, output_hidden_states=True)
+            # loss = res.loss
+            logits = res.logits
+            # print(res[0])
+            # print(len(res))
+            # print(res.hidden_states)
+            # print(len(res.hidden_states))
+            # print(model.lm_head.weight.shape)
+            # loss = linear_cross_entropy(e=res.hidden_states[-1], c=model.lm_head.weight, targets=labels, shift=True, impl='cce')
+            loss = chunked_cross_entropy(logits[..., :-1, :], labels[..., 1:], chunk_size=128)
+            # print(loss.requires_grad)
+            # print(loss)
+            fabric.backward(loss)
+
+            fabric.clip_gradients(model, optimizer, clip_val=1.0)
+
+            with record_function('optimizer'):
+                if (iter_num + 1) % grad_accm_steps == 0:
+                    optimizer.step()
+                    optimizer.zero_grad(set_to_none=True)
+                
         dt = time.time() - d0
 
         if (iter_num+1) % run_config.log_interval == 0:
@@ -253,13 +256,17 @@ def train(
 
         if iter_num == max_iters:
             break
+        
+        # print(prof.key_averages(group_by_input_shape=True).table(sort_by='cuda_memory_usage', row_limit=10))
     
-    adapter_save(
-        model,
-        tokenizer,
-        exp_dir=out_dir
-    )
+    prof.export_chrome_trace('trace.json')
+    # adapter_save(
+    #     model,
+    #     tokenizer,
+    #     exp_dir=out_dir
+    # )
 
+    
     # merge_adapter(out_dir)
 
 # def merge_adapter(lora_adapter):
@@ -270,6 +277,6 @@ def train(
 #     model.push_to_hub_merged(f"gjyotin305/check_litenv_merged", tokenizer, save_method='merged_16bit')
 
 if __name__ == "__main__":
-    # main()
-    infer_standalone('./lit_saves/lora_1')
+    main()
+    # infer_standalone('./lit_saves/lora_1')
     # merge_adapter(run_config.out_dir)
