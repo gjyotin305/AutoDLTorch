@@ -1,7 +1,7 @@
 # Lightning Fabric Rewrite
 # import unsloth
 from dataclasses import dataclass
-import lightning as L
+import torch
 import gdown
 from huggingface_hub import HfApi
 import os
@@ -12,6 +12,8 @@ import torchao
 from torch.utils.checkpoint import checkpoint
 import time
 import deepspeed
+from deepspeed.accelerator import get_accelerator
+from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 from torch.profiler import profile, ProfilerActivity, record_function
 from model_utils import write_readme_experiment
 from torch.utils.data import DataLoader
@@ -24,42 +26,60 @@ from typing import Literal
 from dataset_new_loader import LMDataset
 
 
+def apply_grad_ckpt_to_model(model):
+    pass
+
 
 activities = [ProfilerActivity.CPU, ProfilerActivity.CUDA]
 
 api = HfApi()
+scaler = torch.amp.GradScaler()
+
 
 @dataclass
 class RunHyperParams:
     num_epochs: float = 1
     devices: int = 1 
-    log_interval: int = 2
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    log_interval: int = 20
     learning_rate: float = 1e-3
     batch_size: int = 8
     micro_batch_size: int = 1
     block_size: int = 1024
+    grad_clip: float = 1.0
     out_dir: str = 'lit_saves/lora_1'
     warmup_steps: int = 100
     epoch_size: int = 50000
 
 run_config = RunHyperParams()
 
+class CustomModel(torch.nn.Module):
+    def __init__(self, model_name) -> None:
+        super().__init__()
+        self.model = AutoModelForCausalLM.from_pretrained(model_name).to(run_config.device)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+    
+    def forward(self, input_ids, attention_mask, **kwargs):
+        ## KV Caching Fast Model Forward Pass
+        pass
+
+
 def main():
 
-    fabric = L.Fabric(
-        accelerator="cuda", 
-        devices=[0,1], 
-        strategy='ddp',
-        precision="bf16-true"
-    )
-    fabric.launch()
-    fabric.seed_everything(1337 + fabric.global_rank)
+    # fabric = L.Fabric(
+    #     accelerator="cuda", 
+    #     devices=[0,1], 
+    #     strategy='ddp',
+    #     precision="bf16-true"
+    # )
+    # fabric.launch()
+    # fabric.seed_everything(1337 + fabric.global_rank)
 
     model = AutoModelForCausalLM.from_pretrained('Qwen/Qwen2.5-1.5B-Instruct')
     tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-1.5B-Instruct')
     
-    if fabric.global_rank == 0:
-        os.makedirs(run_config.out_dir, exist_ok=True)
+    # if fabric.global_rank == 0:
+    #     os.makedirs(run_config.out_dir, exist_ok=True)
 
     train_data = LMDataset(
         tokenizer=tokenizer,
@@ -79,20 +99,29 @@ def main():
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
                             "gate_proj", "up_proj", "down_proj"]
     )
+    # model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": True})
+    # setattr(model.config, "use_cache", False)  # turn off when gradient checkpointing is enabled
+    # print("Gradient checkpointing enabled.")
+    #  model.gradient_checkpointing_enable()
 
     model = get_peft_model(peft_config=peft_conf, model=model)
     model.print_trainable_parameters()
 
+    model.to(run_config.device, dtype=torch.bfloat16)
     # model = cce_patch(model)
+    # model.config.use_cache = False
+    # model.gradient_checkpointing_enable()
+    # print(model.config.gradient_checkpointing)  # or inspect modules
+    # model.prepare_model_for_gradient_checkpointing(model=model)
 
-    train_loader = fabric.setup_dataloaders(train_loader)
+    # train_loader = fabric.setup_dataloaders(train_loader)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=run_config.learning_rate)
     # optimizer = torchao.optim.AdamW8bit(model.parameters())
     # optimizer = torchao.optim.CPUOffloadOptimizer(model.parameters(), fused=True)
     # optimizer = bnb.optim.Adam8bit(model.parameters(), lr=run_config.learning_rate, min_8bit_size=4096, is_paged=False)
-    model, optimizer = fabric.setup(model, optimizer)
-    train(fabric, model, tokenizer, optimizer, train_loader, run_config.out_dir)
+    # model, optimizer = fabric.setup(model, optimizer)
+    train(model, tokenizer, optimizer, train_loader, run_config.out_dir)
     infer(model, tokenizer)
 
 def infer_standalone(exp_dir):
@@ -200,7 +229,6 @@ def adapter_save(
 
 
 def train(
-    fabric,
     model,
     tokenizer,
     optimizer,
@@ -213,10 +241,8 @@ def train(
    
     # max_iters = run_config.num_epochs * run_config.epoch_size // run_config.micro_batch_size // run_config.devices
     max_iters = 100
-
-    fabric.print(f'Iters : {max_iters}')
+    print(f'Iters : {max_iters}')
     for batch in train_data:
-
         if iter_num <= run_config.warmup_steps:
             lr = run_config.learning_rate*iter_num/run_config.warmup_steps
             for param_group in optimizer.param_groups:
@@ -226,31 +252,36 @@ def train(
         input_ids, labels, attention_masks = batch['input_ids'], batch['labels'], batch['attention_mask']   
             
         with profile(activities=activities, profile_memory=True, record_shapes=True) as prof:
-            res = model.forward(input_ids=input_ids, attention_masks=attention_masks, labels=labels, output_hidden_states=True)
-            # loss = res.loss
-            logits = res.logits
+            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+                res = model.forward(input_ids=input_ids, attention_masks=attention_masks, labels=labels, output_hidden_states=True)
+                logits = res.logits
+                loss = chunked_cross_entropy(logits[..., :-1, :], labels[..., 1:], chunk_size=128)
+                # loss = res.loss
             # print(res[0])
             # print(len(res))
             # print(res.hidden_states)
             # print(len(res.hidden_states))
             # print(model.lm_head.weight.shape)
             # loss = linear_cross_entropy(e=res.hidden_states[-1], c=model.lm_head.weight, targets=labels, shift=True, impl='cce')
-            loss = chunked_cross_entropy(logits[..., :-1, :], labels[..., 1:], chunk_size=128)
             # print(loss.requires_grad)
             # print(loss)
-            fabric.backward(loss)
+            scaler.scale(loss).backward()
 
-            fabric.clip_gradients(model, optimizer, clip_val=1.0)
-
+            
             with record_function('optimizer'):
                 if (iter_num + 1) % grad_accm_steps == 0:
+                    
+                    if run_config.grad_clip != 0.0:
+                        # scaler.unscale_(optimizer) use if mixed precision
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
                     optimizer.step()
                     optimizer.zero_grad(set_to_none=True)
-                
+                    
         dt = time.time() - d0
 
         if (iter_num+1) % run_config.log_interval == 0:
-            fabric.print(f'Step: {iter_num+1} | loss: {loss.item()} | time: {dt}')
+            print(f'Step: {iter_num+1} | loss: {loss.item()} | time: {dt}')
 
         iter_num += 1
 
