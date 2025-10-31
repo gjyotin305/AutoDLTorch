@@ -110,9 +110,9 @@ class LMDataset(Dataset):
         labels = mask_system_to_assistant_labels(input_ids_fin, labels, self.tokenizer)
 
         result = {  
-            'input_ids': input_ids_fin,
-            'attention_mask':attention_mask,
-            'labels': labels
+            'input_ids': input_ids_fin.to(self.device),
+            'attention_mask':attention_mask.to(self.device),
+            'labels': labels.to(self.device)
         }
 
         return result

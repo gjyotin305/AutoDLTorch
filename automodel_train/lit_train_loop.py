@@ -11,9 +11,9 @@ import bitsandbytes as bnb
 import torchao
 from torch.utils.checkpoint import checkpoint
 import time
-import deepspeed
-from deepspeed.accelerator import get_accelerator
-from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
+# import deepspeed
+# from deepspeed.accelerator import get_accelerator
+# from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 from torch.profiler import profile, ProfilerActivity, record_function
 from model_utils import write_readme_experiment
 from torch.utils.data import DataLoader
@@ -53,6 +53,9 @@ class RunHyperParams:
 
 run_config = RunHyperParams()
 
+# def apply_grad_ckpt():
+#     pass
+
 class CustomModel(torch.nn.Module):
     def __init__(self, model_name) -> None:
         super().__init__()
@@ -75,7 +78,7 @@ def main():
     # fabric.launch()
     # fabric.seed_everything(1337 + fabric.global_rank)
 
-    model = AutoModelForCausalLM.from_pretrained('Qwen/Qwen2.5-1.5B-Instruct')
+    model = AutoModelForCausalLM.from_pretrained('Qwen/Qwen2.5-1.5B-Instruct', attn_implementation='flash_attention_2', dtype=torch.bfloat16)
     tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-1.5B-Instruct')
     
     # if fabric.global_rank == 0:
@@ -93,8 +96,8 @@ def main():
     )
 
     peft_conf = LoraConfig(
-        r=8,
-        lora_alpha=16,
+        r=2,
+        lora_alpha=2,
         task_type=TaskType.CAUSAL_LM,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
                             "gate_proj", "up_proj", "down_proj"]
@@ -104,10 +107,10 @@ def main():
     # print("Gradient checkpointing enabled.")
     #  model.gradient_checkpointing_enable()
 
-    model = get_peft_model(peft_config=peft_conf, model=model)
-    model.print_trainable_parameters()
+    # model = get_peft_model(peft_config=peft_conf, model=model)
+    # model.print_trainable_parameters()
 
-    model.to(run_config.device, dtype=torch.bfloat16)
+    model.to(run_config.device)
     # model = cce_patch(model)
     # model.config.use_cache = False
     # model.gradient_checkpointing_enable()
@@ -253,8 +256,10 @@ def train(
             
         with profile(activities=activities, profile_memory=True, record_shapes=True) as prof:
             with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-                res = model.forward(input_ids=input_ids, attention_masks=attention_masks, labels=labels, output_hidden_states=True)
+                res = model.forward(input_ids=input_ids.to(run_config.device), attention_masks=attention_masks.to(run_config.device), labels=labels.to(run_config.device), output_hidden_states=True)
                 logits = res.logits
+                # print(logits.device)
+                # print(labels.device)
                 loss = chunked_cross_entropy(logits[..., :-1, :], labels[..., 1:], chunk_size=128)
                 # loss = res.loss
             # print(res[0])
