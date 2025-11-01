@@ -5,11 +5,13 @@ import torch
 import gdown
 from huggingface_hub import HfApi
 import os
+import torch.nn as nn
 from tqdm import tqdm
 import pandas as pd
 import bitsandbytes as bnb
 import torchao
-from torch.utils.checkpoint import checkpoint
+from torch.utils.checkpoint import checkpoint, checkpoint_sequential
+from transformers.modeling_layers import GradientCheckpointingLayer
 import time
 # import deepspeed
 # from deepspeed.accelerator import get_accelerator
@@ -21,13 +23,14 @@ import torch
 from cut_cross_entropy import linear_cross_entropy
 from litgpt.utils import chunked_cross_entropy
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
+from transformers.models.qwen2.modeling_qwen2 import Qwen2DecoderLayer
 from peft import get_peft_model, LoraConfig, TaskType
 from typing import Literal
 from dataset_new_loader import LMDataset
 
 
-def apply_grad_ckpt_to_model(model):
-    pass
+# def apply_grad_ckpt_to_model(model):
+    # pass
 
 
 activities = [ProfilerActivity.CPU, ProfilerActivity.CUDA]
@@ -53,19 +56,69 @@ class RunHyperParams:
 
 run_config = RunHyperParams()
 
-# def apply_grad_ckpt():
-#     pass
+# unsloth_ckpter = Unsloth_Offloaded_Gradient_Checkpointer()
 
-class CustomModel(torch.nn.Module):
-    def __init__(self, model_name) -> None:
+class ModelWGradCkpt(nn.Module):
+    def __init__(self, model) -> None:
         super().__init__()
-        self.model = AutoModelForCausalLM.from_pretrained(model_name).to(run_config.device)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-    
-    def forward(self, input_ids, attention_mask, **kwargs):
-        ## KV Caching Fast Model Forward Pass
-        pass
+        self.model = model
 
+    def forward(self, *args, **kwargs):
+        # print('Check')
+        def forward_fn(*inputs):
+            return self.model(*inputs, **kwargs)
+        
+        return checkpoint(forward_fn, *args, use_reentrant=False)
+
+# class Qwen2DecoderLayerwGradientCheckpoint(GradientCheckpointingLayer):
+#     def __init__(self, layer: Qwen2DecoderLayer) -> None:
+#         super().__init__()
+#         self.layer = layer
+    
+#     def forward(self, hidden_states, **kwargs):
+
+#         pass
+
+
+def apply_grad_ckpt(model):
+    # Decoder Layers
+    # model.lm_head = ModelWGradCkpt(model.lm_head)
+    # model.model.embed_tokens = ModelWGradCkpt(model.model.embed_tokens)
+    for layer in model.model.layers:
+        layer.self_attn = ModelWGradCkpt(layer.self_attn)
+        layer.mlp = ModelWGradCkpt(layer.mlp)
+        # layer.input_layernorm = ModelWGradCkpt(layer.input_layernorm)
+        # layer.post_attention_layernorm = ModelWGradCkpt(layer.post_attention_layernorm)
+
+    return model
+
+def apply_grad_ckpt_lora(model):
+    # Decoder Layers
+    # model.lm_head = ModelWGradCkpt(model.lm_head)
+    # model.model.embed_tokens = ModelWGradCkpt(model.model.embed_tokens)
+    for layer in model.base_model.model.model.layers:
+        layer.self_attn = ModelWGradCkpt(layer.self_attn)
+        layer.mlp = ModelWGradCkpt(layer.mlp)
+        # layer.input_layernorm = ModelWGradCkpt(layer.input_layernorm)
+        # layer.post_attention_layernorm = ModelWGradCkpt(layer.post_attention_layernorm)
+
+    return model
+
+    
+class CustomModel(torch.nn.Module):
+    def __init__(self, model) -> None:
+        super().__init__()
+        self.model = model
+
+    def forward(self, *args, **kwargs):
+        
+        def forward_fn(*args):
+            return self.model.forward(*args, **kwargs)
+        
+        return checkpoint(forward_fn, *args, use_reentrant=False)
+
+def apply_grad_ckpt_v2(model):
+    return CustomModel(model)
 
 def main():
 
@@ -78,9 +131,11 @@ def main():
     # fabric.launch()
     # fabric.seed_everything(1337 + fabric.global_rank)
 
-    model = AutoModelForCausalLM.from_pretrained('Qwen/Qwen2.5-1.5B-Instruct', attn_implementation='flash_attention_2', dtype=torch.bfloat16)
+    model = AutoModelForCausalLM.from_pretrained('Qwen/Qwen2.5-1.5B-Instruct', dtype=torch.bfloat16)
     tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-1.5B-Instruct')
-    
+    model.config.use_cache = False
+    # model = apply_grad_ckpt(model)
+    # model = apply_grad_ckpt_v2(model)
     # if fabric.global_rank == 0:
     #     os.makedirs(run_config.out_dir, exist_ok=True)
 
@@ -97,7 +152,7 @@ def main():
 
     peft_conf = LoraConfig(
         r=2,
-        lora_alpha=2,
+        lora_alpha=4,
         task_type=TaskType.CAUSAL_LM,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
                             "gate_proj", "up_proj", "down_proj"]
@@ -107,10 +162,14 @@ def main():
     # print("Gradient checkpointing enabled.")
     #  model.gradient_checkpointing_enable()
 
-    # model = get_peft_model(peft_config=peft_conf, model=model)
-    # model.print_trainable_parameters()
+    model = get_peft_model(peft_config=peft_conf, model=model)
+    model.print_trainable_parameters()
+    
+    model = apply_grad_ckpt_lora(model)
+    
 
     model.to(run_config.device)
+    
     # model = cce_patch(model)
     # model.config.use_cache = False
     # model.gradient_checkpointing_enable()
@@ -256,7 +315,7 @@ def train(
             
         with profile(activities=activities, profile_memory=True, record_shapes=True) as prof:
             with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-                res = model.forward(input_ids=input_ids.to(run_config.device), attention_masks=attention_masks.to(run_config.device), labels=labels.to(run_config.device), output_hidden_states=True)
+                res = model.forward(input_ids=input_ids.to(run_config.device), attention_masks=attention_masks.to(run_config.device), labels=labels.to(run_config.device))
                 logits = res.logits
                 # print(logits.device)
                 # print(labels.device)
