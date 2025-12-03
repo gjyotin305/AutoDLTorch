@@ -2,12 +2,17 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import DataLoader
+from dataset_new_loader import LMDataset
+from grad_ckpt import apply_unsloth_offloaded_gradient_checkpoint_monkey_patch
 from contextlib import nullcontext
 from dataclasses import dataclass
 import numpy as np
 import inspect
 import time
 import math
+
+apply_unsloth_offloaded_gradient_checkpoint_monkey_patch()
 
 @dataclass
 class RunConfig:
@@ -19,7 +24,7 @@ class RunConfig:
     log_interval = 10
     gradient_accm_steps: int = 5*8
     batch_size: int = 2
-    block_size: int = 64
+    block_size: int = 1024
     always_save_ckpt: bool = True
     wandb_log=False
     wandb_project = 'test'
@@ -52,6 +57,11 @@ class Trainer:
         self.scaler = torch.amp.GradScaler('cuda', enabled=(self.config.dtype == 'float16'))
         self.tokenizer = AutoTokenizer.from_pretrained(config.model_name)
         self._init_optimizer(weight_decay=self.config.weight_decay, lr=self.config.lr, betas=(self.config.beta1, self.config.beta2), device=self.config.device)
+        self.dataset = LMDataset(
+            bin_file_data='./train_alpaca.pt',
+            block_size=1024
+        )  
+        self.dataloader = DataLoader(self.dataset, batch_size=self.config.batch_size, shuffle=False)
 
     def _init_optimizer(self, weight_decay, lr, betas, device):
         param_dict = {pn: p for pn, p in self.model.named_parameters()}
@@ -77,32 +87,39 @@ class Trainer:
 
     
     def get_batch(self, split):
-        if split == 'train':
-            data = np.memmap('train.bin', dtype=np.uint16, mode='r')
-        else:
-            data = np.memmap('test.bin', dtype=np.uint16, mode='r')
+        # if split == 'train':
+        #     data = np.memmap('train.bin', dtype=np.uint16, mode='r')
+        # else:
+        #     data = np.memmap('test.bin', dtype=np.uint16, mode='r')
         
-        ix = torch.randint(len(data) - self.config.block_size, (self.config.batch_size, ))
-        x = torch.stack([torch.from_numpy(data[i: i+ self.config.block_size].astype(np.int64)) for i in ix])
-        y = torch.stack([torch.from_numpy(data[i+1: i+1+self.config.block_size].astype(np.int64)) for i in ix])
+        # ix = torch.randint(len(data) - self.config.block_size, (self.config.batch_size, ))
+        # x = torch.stack([torch.from_numpy(data[i: i+ self.config.block_size].astype(np.int64)) for i in ix])
+        # y = torch.stack([torch.from_numpy(data[i+1: i+1+self.config.block_size].astype(np.int64)) for i in ix])
+        
+        x, y = None, None
+        for obj in self.dataloader:
+            x, y = obj['input_ids'], obj['labels']
+            break
 
-        if self.device_type == 'cuda':
-            x, y = x.pin_memory().to(device=self.config.device, non_blocking=True), y.pin_memory().to(device=self.device_type, non_blocking=True)
-        else:
-            x, y = x.to(device=self.config.device), y.to(device=self.config.device)
+        # if self.device_type == 'cuda':
+        #     x, y = x.pin_memory().to(device=self.config.device, non_blocking=True), y.pin_memory().to(device=self.device_type, non_blocking=True)
+        # else:
+        x, y = x.to(device=self.config.device), y.to(device=self.config.device)
         
+        # print(x.shape, y.shape)
         return x, y
 
     @torch.no_grad # Evaluation Loop or Inference
     def compute_loss(self):
         out = {}
         self.model.eval()
-        for split in ['train', 'val']:
+        for split in ['train']:
             losses = torch.zeros(self.config.eval_iters)
             for k in range(self.config.eval_iters):
                 X, Y = self.get_batch(split)
                 with self.ctx:
                     result = self.model.forward(input_ids=X, labels=Y)
+                    # print(result)
                     loss = result.loss
                 losses[k] = loss.item()
             out[split] = losses.mean()
@@ -124,12 +141,12 @@ class Trainer:
 
 
     def train_loop(self, n_iters):
+        # self.model.gradient_checkpointing_enable()
         if self.config.compile:
             self.unoptimized_model = self.model
             self.model = torch.compile(self.model)
         X, y = self.get_batch('train')
         t0 = time.time()
-        local_iter_num = 0
         best_val_loss = 1e9
         for iter_num in range(n_iters):
             lr = self.get_cosine_lr(iter_num) if self.config.decay_lr else self.config.lr
@@ -138,17 +155,17 @@ class Trainer:
 
             if iter_num % self.config.eval_interval == 0:
                 losses = self.compute_loss()
-                print(f"Step {iter_num}: train_loss {losses['train']:.4f} | val_loss {losses['val']:.4f}")
-                if losses["val"] < best_val_loss or self.config.always_save_ckpt:
-                    best_val_loss = losses["val"]
-                    if iter_num > 0:
-                        checkpoint = {
-                            'model': self.model.state_dict(),
-                            'optimizer': self.optimizer.state_dict(),
-                            'best_val_loss': best_val_loss 
-                        }            
-                        print(f"Saving ckpt to {self.config.out_dir}")
-                        torch.save(checkpoint, f'ckpt_{iter_num}.pt')
+                print(f"Step {iter_num}: train_loss {losses['train']:.4f}")
+                # if losses["val"] < best_val_loss or self.config.always_save_ckpt:
+                    # best_val_loss = losses["val"]
+                # if iter_num > 0:
+                #     checkpoint = {
+                #         'model': self.model.state_dict(),
+                #         'optimizer': self.optimizer.state_dict()
+                #         # 'best_val_loss': best_val_loss 
+                #     }            
+                #     print(f"Saving ckpt to {self.config.out_dir}")
+                #     torch.save(checkpoint, f'ckpt_{iter_num}.pt')
                 
             if iter_num == 0 and self.config.eval_only:
                 break
@@ -156,7 +173,7 @@ class Trainer:
             for micro_step in range(self.config.gradient_accm_steps):
                 with self.ctx:
                     out = self.model.forward(input_ids=X, labels=y)
-                    logits, loss = out.logits, out.loss
+                    loss = out.loss
                     loss = loss / self.config.gradient_accm_steps
                 
                 X, y = self.get_batch('train')
@@ -189,7 +206,7 @@ class Trainer:
 if __name__ == "__main__":
     # Test trainer
 
-    trainer = Trainer(config=RunConfig(model_name="HuggingFaceTB/SmolLM2-360M"))
+    trainer = Trainer(config=RunConfig(model_name="Qwen/Qwen2.5-1.5B-Instruct"))
     x, y = trainer.get_batch(split='train')
     
     print(x.shape, y.shape)

@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
@@ -252,6 +252,7 @@ if __name__ == "__main__":
     #     split='train'
     # )
 
+    # model = AutoModelForCausalLM.from_pretrained('')
     tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-1.5B-Instruct')
 
     # print(check.dataset['train'])
@@ -277,7 +278,16 @@ if __name__ == "__main__":
         bin_file_data="./train_alpaca.pt",
         block_size=1024
     )
+    
+    dataloader = DataLoader(
+        dataset=dataset,
+        batch_size=2,
+        shuffle=False
+    )
 
+
+
+<<<<<<< Updated upstream
     # print(tokenizer.eos_token_id, tokenizer.bos_token_id, tokenizer.pad_token_id)
 
     for i, (res) in enumerate(dataset):
@@ -290,10 +300,23 @@ if __name__ == "__main__":
         tokens = tokenizer.convert_ids_to_tokens(check)
         print(tokens)
         print("="*100)
+=======
+    print(tokenizer.eos_token_id, tokenizer.bos_token_id, tokenizer.pad_token_id)
+    
 
-        print(x[:100], y[:100], z[:100])
-        if i == 2:
-            break
+    # for i, (res) in enumerate(dataset):
+    #     x, y, z = res['input_ids'], res['labels'], res['attention_mask']
+    #     print(x.shape, y.shape, z.shape)
+    #     check = x[:100].cpu().numpy().tolist()
+
+    #     print("="*100)
+    #     print(tokenizer.decode(check))
+    #     print("="*100)
+>>>>>>> Stashed changes
+
+    #     print(x[:100], y[:100], z[:100])
+    #     if i == 2:
+    #         break
 
     # check_loader = DataLoader(
     #     dataset=dataset,
