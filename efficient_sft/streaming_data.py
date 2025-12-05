@@ -27,7 +27,12 @@ class InstructionTuningDataset:
         return message_input, message_output
 
 class StreamingITDataLoader: 
-    def __init__(self, ds_name, tokenizer: AutoTokenizer, style: str ='conv') -> None:
+    def __init__(
+        self, 
+        ds_name: str, 
+        tokenizer: AutoTokenizer, 
+        style: str ='conv'
+    ) -> None:
         self.streamer_ds = load_dataset(ds_name, streaming=True, split='train')
         self.tokenizer = tokenizer
         self.style = style
@@ -43,8 +48,18 @@ class StreamingITDataLoader:
         else:
             raise NotImplementedError('Normal Text not implemented')
         
-        tokenized_pt = self.tokenizer.apply_chat_template(message_in, tokenize=True, return_tensors='pt', add_generation_prompt=False)   
-        tokenized_pt_label = self.tokenizer.apply_chat_template(message_ou, tokenize=True, return_tensors='pt', add_generation_prompt=False)
+        tokenized_pt = self.tokenizer.apply_chat_template(
+            message_in, 
+            tokenize=True, 
+            return_tensors='pt', 
+            add_generation_prompt=False
+        )   
+        tokenized_pt_label = self.tokenizer.apply_chat_template(
+            message_ou, 
+            tokenize=True, 
+            return_tensors='pt', 
+            add_generation_prompt=False
+        )
         
         mask_len = len(tokenized_pt[0])
         full_len = len(tokenized_pt_label[0])
