@@ -1,6 +1,7 @@
 from datasets import load_dataset
 from dataclasses import dataclass
 import torch
+from einops import rearrange
 from transformers import AutoTokenizer
 
 @dataclass
@@ -64,14 +65,17 @@ class StreamingITDataLoader:
         mask_len = len(tokenized_pt[0])
         full_len = len(tokenized_pt_label[0])
 
-        mask_create = [True for x in range(mask_len)]
-        mask_create.extend([False for x in range(full_len - mask_len)])
+        mask_create = [True for _ in range(mask_len)]
+        mask_create.extend([False for _ in range(full_len - mask_len)])
 
         tensor_mask = torch.tensor(mask_create)
         assert len(mask_create) == full_len, "Incorrect Mask"
 
         input_ids_tensor = tokenized_pt_label[0].clone()
         labels_tensor_masked = tokenized_pt_label[0].masked_fill(tensor_mask, -100)
+
+        input_ids_tensor = rearrange(input_ids_tensor, '(b t) -> b t', b=1)
+        labels_tensor_masked = rearrange(labels_tensor_masked, '(b t) -> b t', b=1)
 
         return {
             'input_ids': input_ids_tensor,
