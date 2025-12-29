@@ -6,12 +6,13 @@ from tqdm import tqdm
 from streaming_data import StreamingITDataLoader
 
 config = {
-    'lr':5e-5,
+    'lr':2e-4,
     'model': 'Full Finetune',
     'dataset': 'Alpaca',
-    'steps_epoch': 200,
-    'epochs': 3,
-    'grad_accm': 4
+    'steps_epoch': 1000,
+    'epochs': 10,
+    'grad_accm': 16,
+    'grad_ckpt': True
 }
 
 @torch.no_grad()
@@ -48,7 +49,7 @@ if __name__ == "__main__":
     
     grad_accm_steps = config['grad_accm']
     
-    fast = FastModel(model_name='Qwen/Qwen2.5-1.5B-Instruct', grad_ckpt=True)
+    fast = FastModel(model_name='Qwen/Qwen2.5-1.5B-Instruct', grad_ckpt=config['grad_ckpt'])
     fast.model.train(True)
     
     wandb.init(

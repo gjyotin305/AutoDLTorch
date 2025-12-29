@@ -76,7 +76,7 @@ class FastModel:
         residual = hidden_states
         hidden_states = layer.input_layernorm(hidden_states)
         
-        hidden_states, _ = self.attention_fast_forward(
+        hidden_states, weights = self.attention_fast_forward(
             layer=layer,
             hidden_states=hidden_states,
             position_embeddings=position_embedding
@@ -88,16 +88,16 @@ class FastModel:
         hidden_states = layer.mlp(hidden_states)
         hidden_states += residual
 
-        outputs = hidden_states
-        # if output_attention:
-        #     outputs += (weights.detach(),)
+        outputs = (hidden_states,)
+        if output_attention:
+            outputs += (weights.detach(),)
 
         return outputs
 
     def decoder_forward_ckpt(self, *args, **kwargs):
         def forward_fn(*inputs):
             return self.decoder_fast_forward(*inputs, **kwargs)
-        return checkpoint.checkpoint(forward_fn, *args, use_reentrant=False)
+        return checkpoint.checkpoint(forward_fn, *args, use_reentrant=True, preserve_rng_state=False)
 
     def forward(self, input_ids, labels=None):
         input_emb = self.model.model.embed_tokens(input_ids.to('cuda'))
@@ -111,30 +111,21 @@ class FastModel:
         position_embeddings = self.model.model.rotary_emb(hidden_states, position_ids)
 
         for layer in self.model.model.layers:
-            def make_decoder_fn(layer):
-                def fn(hidden_states, position_embeddings):
-                    return self.decoder_fast_forward(
-                        layer=layer,
-                        hidden_states=hidden_states,
-                        position_embedding=position_embeddings
-                    )
-                return fn
-            fn = make_decoder_fn(layer)
-            # outputs = checkpoint.checkpoint(
-            #     self.decoder_fast_forward,
-            #     layer=layer,
-            #     hidden_states=hidden_states,
-            #     position_embedding=position_embeddings,
-            #     use_reentrant=False
-            # )
-            # hidden_states = outputs[0]
-            # else:
-            outputs = Unsloth_Offloaded_Gradient_Checkpointer.apply(
-                fn,
-                hidden_states,
-                position_embeddings
-            )
-            hidden_states = outputs
+            if self.grad_ckpt_check:
+                outputs = self.decoder_forward_ckpt(
+                    layer=layer,
+                    hidden_states=hidden_states,
+                    position_embedding=position_embeddings
+                )
+                hidden_states = outputs[0]
+            else:
+                outputs = self.decoder_fast_forward(
+                    layer=layer,
+                    hidden_states=hidden_states,
+                    position_embedding=position_embeddings
+                )
+                hidden_states = outputs[0]
+           
             
         # Pre LM Head Layer Norm 
         hidden_states = self.model.model.norm(hidden_states)
