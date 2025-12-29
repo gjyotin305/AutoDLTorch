@@ -26,8 +26,6 @@ def gradient_norm(params):
     return torch.sqrt(total)
 
 def setup_optimizer_transformer_model(model, config):
-    # decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
-    # nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
     matrix_params = list(model.model.layers.parameters())
     embedding_params = list(model.model.embed_tokens.parameters())
     lm_head_params = list(model.lm_head.parameters())
