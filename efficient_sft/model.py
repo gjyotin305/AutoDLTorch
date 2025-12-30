@@ -8,7 +8,6 @@ DEVICE_COUNT = 1
 DEVICE_TYPE_TORCH = 'cuda'
 get_current_device = torch.cuda.current_device
 
-
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     cos = cos.unsqueeze(unsqueeze_dim)
     sin = sin.unsqueeze(unsqueeze_dim)
@@ -18,7 +17,7 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
 
 class QwenFastModel:
     def __init__(self, model_name, grad_ckpt: bool = False) -> None:
-        self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.bfloat16)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = self.model.to('cuda')
         self.grad_ckpt_check = grad_ckpt
@@ -56,7 +55,7 @@ class QwenFastModel:
         A = flash_attn_func(Q, K, V, causal=True)
         attn_output = A.reshape(bsz, q_len, self.n_heads * self.head_dim)
 
-        attn_output = layer.self_attn.o_proj(attn_output.float())
+        attn_output = layer.self_attn.o_proj(attn_output)
         attn_weights = None
         return attn_output, attn_weights
 

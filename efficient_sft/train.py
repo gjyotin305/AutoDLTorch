@@ -3,7 +3,6 @@ import wandb
 from transformers import AutoTokenizer
 from model import QwenFastModel
 from tqdm import tqdm
-import bitsandbytes as bnb
 from torchao.optim import CPUOffloadOptimizer
 from streaming_data import StreamingITDataLoader
 
@@ -11,9 +10,9 @@ config = {
     'lr':2e-4,
     'model': 'Full Finetune',
     'dataset': 'Alpaca',
-    'steps_epoch': 1000,
+    'steps_epoch': 100,
     'epochs': 10,
-    'grad_accm': 16,
+    'grad_accm': 1,
     'grad_ckpt': True  
 }
 
@@ -41,14 +40,17 @@ def setup_optimizer_transformer_model(model, config):
 
     # optimizer = torch.optim.AdamW(adam_groups)
     # optimizer = bnb.optim.PagedAdamW32bit(adam_groups)
-    optimizer = CPUOffloadOptimizer(adam_groups, torch.optim.AdamW, offload_gradients=True, fused=True)
+    optimizer = CPUOffloadOptimizer(adam_groups, torch.optim.AdamW, offload_gradients=True)
+    # optimizer = torch.optim.AdamW(adam_groups)
     return optimizer
 
 if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-7B-Instruct')
-    dataset = StreamingITDataLoader(ds_name='tatsu-lab/alpaca', tokenizer=tokenizer)
+    dataset = StreamingITDataLoader(
+        ds_name='tatsu-lab/alpaca', 
+        tokenizer=tokenizer
+    )
     stream_data = dataset._return_stream_ds()
-    
     grad_accm_steps = config['grad_accm']
     
     fast = QwenFastModel(model_name='Qwen/Qwen2.5-7B-Instruct', grad_ckpt=config['grad_ckpt'])
@@ -79,7 +81,7 @@ if __name__ == "__main__":
             
             out = fast.forward(input_ids=input_ids, labels=labels)
             loss = out['loss'] / grad_accm_steps  
-            loss.backward()  
+            loss.backward()
 
             if (idx + 1) % grad_accm_steps == 0:
                 pre_clip = gradient_norm(fast.model.parameters()) 
@@ -93,7 +95,7 @@ if __name__ == "__main__":
                 )
                 wandb.log(
                     {
-                        "loss/train": loss.item(),
+                        "loss/train": loss.item()*grad_accm_steps,
                         "lr": optimizer.param_groups[0]["lr"],
                         "gradient_norm/train": post_clip.item()
                     }
@@ -102,9 +104,9 @@ if __name__ == "__main__":
             
             if (idx+1) % 50 == 0:
                 with torch.no_grad():
-                    messages = [
-                        {"role": "system", "content": "You are an instruction following agent.",},
-                        {"role": "user", "content": "## Instruction: Give three tips for staying healthy.\n ## Input: "},
+                    messages = [        
+                        {"role": "system", "content": "You are an instruction following agent."},
+                        {"role": "user", "content": "## Instruction: How did Julius Caesar die?\n ## Input: "}
                     ]
 
                     tokens = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
