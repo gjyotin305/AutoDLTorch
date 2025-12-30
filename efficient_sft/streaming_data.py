@@ -1,6 +1,7 @@
 from datasets import load_dataset
 from dataclasses import dataclass
 import torch
+from tqdm import trange
 from einops import rearrange
 from transformers import AutoTokenizer
 
@@ -32,55 +33,115 @@ class StreamingITDataLoader:
         self, 
         ds_name: str, 
         tokenizer: AutoTokenizer, 
-        style: str ='conv'
+        style: str ='conv',
+        packing: bool = False,
+        pack_size: int = 512,
+        batch_size: int = 32
     ) -> None:
         self.streamer_ds = load_dataset(ds_name, streaming=True, split='train')
+        self.batch_size = batch_size
         self.tokenizer = tokenizer
         self.style = style
+        self.packing = packing
+        self.pack_size = pack_size
 
     def collator(self, item):
-        it_d = InstructionTuningDataset(
-            instruction=item['instruction'],
-            input=item['input'],
-            output=item['output']
-        )
-        if self.style == 'conv':
-            message_in, message_ou = it_d.make_conv_dataset()
-        else:
-            raise NotImplementedError('Normal Text not implemented')
-        
-        tokenized_pt = self.tokenizer.apply_chat_template(
-            message_in, 
-            tokenize=True, 
-            return_tensors='pt', 
-            add_generation_prompt=False
-        )   
-        tokenized_pt_label = self.tokenizer.apply_chat_template(
-            message_ou, 
-            tokenize=True, 
-            return_tensors='pt', 
-            add_generation_prompt=False
-        )
-        
-        mask_len = len(tokenized_pt[0])
-        full_len = len(tokenized_pt_label[0])
+        # Single Stream Inference
+        if self.packing is not True:
+            it_d = InstructionTuningDataset(
+                instruction=item['instruction'],
+                input=item['input'],
+                output=item['output']
+            )
+            if self.style == 'conv':
+                message_in, message_ou = it_d.make_conv_dataset()
+            else:
+                raise NotImplementedError('Normal Text not implemented')
+            
+            # Tokenize both
+            tokenized_in  = self.tokenizer.apply_chat_template(
+                message_in,
+                tokenize=True,
+                return_tensors='pt',
+                add_generation_prompt=False,
+            )
 
-        mask_create = [True for _ in range(mask_len)]
-        mask_create.extend([False for _ in range(full_len - mask_len)])
+            tokenized_lbl = self.tokenizer.apply_chat_template(
+                message_ou,
+                tokenize=True,
+                return_tensors='pt',
+                add_generation_prompt=False,
+            )
 
-        tensor_mask = torch.tensor(mask_create)
-        assert len(mask_create) == full_len, "Incorrect Mask"
+            input_ids = tokenized_lbl[0]
 
-        input_ids_tensor = tokenized_pt_label[0].clone()
-        labels_tensor_masked = tokenized_pt_label[0].masked_fill(tensor_mask, -100)
+            mask_len = tokenized_in[0].size(0)
+            full_len = input_ids.size(0)
 
-        input_ids_tensor = rearrange(input_ids_tensor, '(b t) -> b t', b=1)
-        labels_tensor_masked = rearrange(labels_tensor_masked, '(b t) -> b t', b=1)
+            mask = torch.arange(full_len) < mask_len
 
-        return {
-            'input_ids': input_ids_tensor,
-            'labels': labels_tensor_masked,
-        }
+            # Build labels: original where mask is False, -100 where True
+            labels = input_ids.masked_fill(mask, -100)
+
+            # Add batch dimension
+            input_ids = input_ids.unsqueeze(0)
+            labels     = labels.unsqueeze(0)
+
+            return {
+                'input_ids': input_ids,
+                'labels': labels,
+            }
+        elif self.packing is True:
+            raise NotImplementedError('Packing not Implemented')
+            for i in trange(self.batch_size, desc='Batching'):
+                it_d = InstructionTuningDataset(
+                    instruction=item['instruction'][i],
+                    input=item['input'][i],
+                    output=item['output'][i]
+                )
+                if self.style == 'conv':
+                    message_in, message_ou = it_d.make_conv_dataset()
+                else:
+                    raise NotImplementedError('Normal Text not implemented')
+                tokenized_in  = self.tokenizer.apply_chat_template(
+                    message_in,
+                    tokenize=True,
+                    return_tensors='pt',
+                    add_generation_prompt=False,
+                )
+
+                tokenized_lbl = self.tokenizer.apply_chat_template(
+                    message_ou,
+                    tokenize=True,
+                    return_tensors='pt',
+                    add_generation_prompt=False,
+                )
+
+                input_ids = tokenized_lbl[0]
+
+                mask_len = tokenized_in[0].size(0)
+                full_len = input_ids.size(0)
+
+                mask = torch.arange(full_len) < mask_len
+
+                # Build labels: original where mask is False, -100 where True
+                labels = input_ids.masked_fill(mask, -100)
+
+                # Add batch dimension
+                input_ids = input_ids.unsqueeze(0)
+                labels     = labels.unsqueeze(0)
+
+                return_it =  {
+                    'input_ids': input_ids,
+                    'labels': labels,
+                }
+
+            
+            
+            
+            
+
+
 
     def _return_stream_ds(self):
         return self.streamer_ds
@@ -91,10 +152,13 @@ class StreamingITDataLoader:
 # Get {'input_ids': tensor, 'labels': tensor}
 
 # ```python
-# tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-3B-Instruct')
-# dataset = StreamingITDataLoader(ds_name='tatsu-lab/alpaca', tokenizer=tokenizer)
-# stream_data = dataset._return_stream_ds()
-# for item in stream_data:
-#     data = dataset.collator(item)
-#     print(data['input_ids'].shape, data['labels'].shape)
+# if __name__ == "__main__":
+#     tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-3B-Instruct')
+#     dataset = StreamingITDataLoader(ds_name='tatsu-lab/alpaca', tokenizer=tokenizer)
+#     stream_data = dataset._return_stream_ds()
+#     batch_dataset = stream_data.batch(batch_size=32)
+#     for item in stream_data:
+#         data = dataset.collator(item)
+#         print(data['input_ids'].shape, data['labels'].shape)
+#         break
 # ```

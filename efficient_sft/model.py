@@ -1,6 +1,6 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from einops import rearrange
 import torch
+from streaming_data import StreamingITDataLoader
 import torch.utils.checkpoint as checkpoint
 from flash_attn import flash_attn_func
 
@@ -15,16 +15,6 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
-
-
-def repeat_kv(hidden_states, n_rep):
-    bsz, n_kv_head, s_len, head_dim = hidden_states.size()
-    if n_rep == 1:
-        return hidden_states
-    hidden_states = hidden_states[:, :, None, :, :].expand(bsz, n_kv_head, n_rep, s_len, head_dim)
-    hidden_states = rearrange(hidden_states, 'a b c d e -> a (b c) d e')
-    return hidden_states
-
 
 class QwenFastModel:
     def __init__(self, model_name, grad_ckpt: bool = False) -> None:
@@ -181,6 +171,17 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1) 
 
 # if __name__ == "__main__":
-
-
+# #  Example Usage: Run Forward Function to get logits(inference), loss(training)
+# #  Run Generate Function to get sample generations
+#     tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-3B-Instruct')
+#     dataset = StreamingITDataLoader(ds_name='tatsu-lab/alpaca', tokenizer=tokenizer)
+#     stream_data = dataset._return_stream_ds()
+#     model = QwenFastModel(model_name='Qwen/Qwen2.5-7B-Instruct', grad_ckpt=True)
+#     for item in stream_data:
+#         data = dataset.collator(item)
+#         print(data['input_ids'].shape, data['labels'].shape)
+#         input_ids = data['input_ids'].to('cuda')
+#         out = model.forward(input_ids)
+#         print(out)
+#         break
 
