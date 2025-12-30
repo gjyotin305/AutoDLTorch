@@ -1,8 +1,10 @@
 import torch
 import wandb
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer
 from model import FastModel
 from tqdm import tqdm
+import bitsandbytes as bnb
+from torchao.optim import CPUOffloadOptimizer
 from streaming_data import StreamingITDataLoader
 
 config = {
@@ -12,7 +14,7 @@ config = {
     'steps_epoch': 1000,
     'epochs': 10,
     'grad_accm': 16,
-    'grad_ckpt': True
+    'grad_ckpt': True  
 }
 
 @torch.no_grad()
@@ -30,24 +32,26 @@ def setup_optimizer_transformer_model(model, config):
     embedding_params = list(model.model.embed_tokens.parameters())
     lm_head_params = list(model.lm_head.parameters())
     
-    assert len(list(model.parameters())) == len(matrix_params) + len(embedding_params) + len(lm_head_params)
+    # assert len(list(model.parameters())) == len(matrix_params) + len(embedding_params) + len(lm_head_params)
 
     adam_groups = [
         dict(params=lm_head_params, lr=2e-4),
         dict(params=matrix_params, lr=2e-5)
     ]
 
-    optimizer = torch.optim.AdamW(adam_groups)
+    # optimizer = torch.optim.AdamW(adam_groups)
+    # optimizer = bnb.optim.PagedAdamW32bit(adam_groups)
+    optimizer = CPUOffloadOptimizer(adam_groups, torch.optim.AdamW, offload_gradients=True, fused=True)
     return optimizer
 
 if __name__ == "__main__":
-    tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-1.5B-Instruct')
+    tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-7B-Instruct')
     dataset = StreamingITDataLoader(ds_name='tatsu-lab/alpaca', tokenizer=tokenizer)
     stream_data = dataset._return_stream_ds()
     
     grad_accm_steps = config['grad_accm']
     
-    fast = FastModel(model_name='Qwen/Qwen2.5-1.5B-Instruct', grad_ckpt=config['grad_ckpt'])
+    fast = FastModel(model_name='Qwen/Qwen2.5-7B-Instruct', grad_ckpt=config['grad_ckpt'])
     fast.model.train(True)
     
     wandb.init(
@@ -59,12 +63,6 @@ if __name__ == "__main__":
         p.requires_grad_(True)
     
     optimizer = setup_optimizer_transformer_model(fast.model, config)
-    # scheduler = torch.optim.lr_scheduler.LinearLR(
-    #     optimizer,
-    #     start_factor=1.0,
-    #     end_factor=0.0,
-    #     total_iters=config['total_steps']
-    # )
     total_steps = config['epochs'] * config['steps_epoch'] // config['grad_accm']
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
