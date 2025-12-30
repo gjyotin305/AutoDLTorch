@@ -7,4 +7,5 @@
 - [x] Test Optimal Training
 - [x] Add Gradient Checkpointing
 - [x] Add CPUOffload Optimizer Support
+- [ ] Packing Support, Batch Inference
 - [ ] Add fused linear cross entropy loss
