@@ -26,7 +26,7 @@ def repeat_kv(hidden_states, n_rep):
     return hidden_states
 
 
-class FastModel:
+class QwenFastModel:
     def __init__(self, model_name, grad_ckpt: bool = False) -> None:
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)

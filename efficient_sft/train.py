@@ -1,7 +1,7 @@
 import torch
 import wandb
 from transformers import AutoTokenizer
-from model import FastModel
+from model import QwenFastModel
 from tqdm import tqdm
 import bitsandbytes as bnb
 from torchao.optim import CPUOffloadOptimizer
@@ -51,7 +51,7 @@ if __name__ == "__main__":
     
     grad_accm_steps = config['grad_accm']
     
-    fast = FastModel(model_name='Qwen/Qwen2.5-7B-Instruct', grad_ckpt=config['grad_ckpt'])
+    fast = QwenFastModel(model_name='Qwen/Qwen2.5-7B-Instruct', grad_ckpt=config['grad_ckpt'])
     fast.model.train(True)
     
     wandb.init(
