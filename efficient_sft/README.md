@@ -9,3 +9,4 @@
 - [x] Add CPUOffload Optimizer Support
 - [ ] Packing Support, Batch Inference
 - [ ] Add fused linear cross entropy loss
+- [ ] MultiGPU Support (FSDP, DDP, etc)
