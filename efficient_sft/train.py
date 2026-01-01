@@ -79,7 +79,7 @@ if __name__ == "__main__":
             input_ids = data['input_ids'].to('cuda')
             labels = data['labels'].to('cuda')
             
-            out = fast.forward(input_ids=input_ids, labels=labels)
+            out = fast.forward(input_ids=input_ids, labels=labels, cce_impl=False)
             loss = out['loss'] / grad_accm_steps  
             loss.backward()
 

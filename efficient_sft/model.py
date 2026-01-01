@@ -1,6 +1,8 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 from streaming_data import StreamingITDataLoader
+# Linear Cross Entropy deserves its own exploration tbh.
+from cut_cross_entropy import linear_cross_entropy
 import torch.utils.checkpoint as checkpoint
 from flash_attn import flash_attn_func
 
@@ -86,7 +88,7 @@ class QwenFastModel:
             return self.decoder_fast_forward(*inputs, **kwargs)
         return checkpoint.checkpoint(forward_fn, *args, use_reentrant=True, preserve_rng_state=False)
 
-    def forward(self, input_ids, labels=None):
+    def forward(self, input_ids, labels=None, cce_impl=True):
         input_emb = self.model.model.embed_tokens(input_ids.to('cuda'))
         _, seq_len, _ = input_emb.size()
         hidden_states = input_emb
@@ -114,11 +116,22 @@ class QwenFastModel:
                 hidden_states = outputs[0]
            
             
-        # Pre LM Head Layer Norm 
-        hidden_states = self.model.model.norm(hidden_states)
-        logits = self.model.lm_head(hidden_states)
-        loss = None
-        
+        # Pre LM Head Layer Norm
+        if cce_impl and (labels is not None): 
+            # print('CCE')
+            hidden_states = self.model.model.norm(hidden_states)
+            loss = linear_cross_entropy(hidden_states, self.model.lm_head.weight, labels, impl='cce')
+            return {
+                'loss': loss,
+                'hidden_states': hidden_states,
+            }
+            # logits = self.model.lm_head(hidden_states)
+            # loss = None
+        else:
+            hidden_states = self.model.model.norm(hidden_states)
+            logits = self.model.lm_head(hidden_states)
+            loss = None
+
         if labels is not None:
             logits = logits[..., :-1, :].contiguous()
             labels = labels[..., 1:].contiguous()
