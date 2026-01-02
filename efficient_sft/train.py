@@ -1,6 +1,8 @@
 import torch
 import wandb
 from transformers import AutoTokenizer
+from torchao.quantization import quantize_, Int8DynamicActivationInt4WeightConfig
+from torchao.quantization.qat import QATConfig
 from model import QwenFastModel
 from tqdm import tqdm
 from torchao.optim import CPUOffloadOptimizer
@@ -13,7 +15,8 @@ config = {
     'steps_epoch': 100,
     'epochs': 10,
     'grad_accm': 1,
-    'grad_ckpt': True  
+    'grad_ckpt': True,
+    'quantization': True  
 }
 
 @torch.no_grad()
@@ -56,6 +59,13 @@ if __name__ == "__main__":
     fast = QwenFastModel(model_name='Qwen/Qwen2.5-7B-Instruct', grad_ckpt=config['grad_ckpt'])
     fast.model.train(True)
     
+    print('Get Model Ready')
+    if config['quantization']:
+        print("Quantizing Model")
+        base_config = Int8DynamicActivationInt4WeightConfig(group_size=32)
+        quantize_(fast.model, QATConfig(base_config, step="prepare"))
+
+
     wandb.init(
         project='efficient-sft',
         config=config
