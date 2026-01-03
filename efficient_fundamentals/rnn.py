@@ -10,7 +10,8 @@ from datasets import load_dataset
 
 config = {
     'EPOCHS': 10,
-    'step_per_epoch': 100
+    'step_per_epoch': 10000,
+    'batch_size': 8
 }
 
 dataset = load_dataset(
@@ -19,7 +20,20 @@ dataset = load_dataset(
     split='train'
 )
 
+dataset_batch = dataset.batch(config['batch_size'])
 encoding = tiktoken.encoding_for_model('gpt-3.5')
+
+pad_token = 100276
+
+def get_batch_pack(x_list, tokenizer, start_str, end_str, pad_token=pad_token):
+    x_list = [f"{start_str}{text}{end_str}" for text in x_list]
+    encoded_batch = tokenizer.encode_batch(x_list, disallowed_special=())
+    length_encoded_batch = [len(batch) for batch in encoded_batch]
+    max_length = max(length_encoded_batch)
+    # print(max_length)
+    _ = [batch.extend([pad_token]*(max_length - len(batch))) for batch in encoded_batch]
+    return encoded_batch
+
 
 class lstmLM(nn.Module):
     def __init__(self) -> None:
@@ -42,11 +56,10 @@ class lstmLM(nn.Module):
         if len(x.size()) < 2:
             x = rearrange(x, '(b t) -> b t', b=1)
 
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
         x0 = self.input_embed(x)
         # print("X0:", x0.shape)
 
-        out, hn = self.rnn(x0, h0)
+        out, _ = self.rnn(x0)
         # print('out:', out.shape)
 
         logits = self.lm_head(out)
@@ -56,7 +69,7 @@ class lstmLM(nn.Module):
 
     def generate(self, tok_in, num_tokens=30, end_tok=None):
         generated_toks = []
-        ids = torch.tensor([tok_in])
+        ids = torch.tensor([tok_in]).to('cuda')
         
         for _ in range(num_tokens):
             logits = self.forward(ids)
@@ -93,7 +106,7 @@ class rnnLM(nn.Module):
         if len(x.size()) < 2:
             x = rearrange(x, '(b t) -> b t', b=1)
 
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
         x0 = self.input_embed(x)
         # print("X0:", x0.shape)
 
@@ -107,7 +120,7 @@ class rnnLM(nn.Module):
 
     def generate(self, tok_in, num_tokens=30, end_tok=None):
         generated_toks = []
-        ids = torch.tensor([tok_in])
+        ids = torch.tensor([tok_in]).to('cuda')
         
         for _ in range(num_tokens):
             logits = self.forward(ids)
@@ -122,14 +135,10 @@ class rnnLM(nn.Module):
         print(encoding.decode(generated_toks))
         return generated_toks
 
-model = lstmLM()
+model = rnnLM().to('cuda')
 
 start_story_tok = "<|fim_prefix|>"
 end_story_tok = "<|fim_suffx|>"
-
-print(encoding.special_tokens_set)
-print(encoding.n_vocab)
-print(encoding._special_tokens)
 
 EPOCHS = config['EPOCHS']
 
@@ -149,26 +158,22 @@ def gradient_norm(params):
     return torch.sqrt(total)
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4)
-loss_fn = nn.CrossEntropyLoss()
+loss_fn = nn.CrossEntropyLoss(ignore_index=pad_token)
 
-total_steps = config['EPOCHS']*config['step_per_epoch']
+total_steps = config['EPOCHS'] * config['step_per_epoch'] // config['batch_size']
 
 pbar = tqdm(total=total_steps)
 for epoch in range(EPOCHS):
     model.train()
-    for i,x in enumerate(dataset):
-        text = f"{start_story_tok}{x['text']}{end_story_tok}"
-        encode_check = encoding.encode(text, disallowed_special=())
-        encode_tensor = torch.tensor(encode_check, dtype=torch.long)
-        encode_tensor = rearrange(encode_tensor, "(b t) -> b t", b=1)
-        # print("Tokens: ",len(encode_check))
-        # print("Characters:", len(text))
-        # # print(encoding.decode(encode_check))
+    for i, x in enumerate(dataset_batch):
+        # Dynamic Padding in a stream to max length
+        pack = get_batch_pack(x_list=x['text'], tokenizer=encoding, start_str=start_story_tok, end_str=end_story_tok)
+        pack_tensor = torch.tensor(pack, dtype=torch.long).to('cuda')
         
-        logits = model.forward(encode_tensor)
-        labels = encode_tensor[..., 1:]
-        logits = logits[..., :-1, :]
-        # print(logits.shape, labels.shape)
+        logits = model.forward(pack_tensor)
+        labels = pack_tensor[..., 1:].contiguous()
+        logits = logits[..., :-1, :].contiguous()
+
         loss = loss_fn(logits.view(-1, logits.size(-1)), labels.view(-1))
         loss.backward()
 
@@ -188,7 +193,7 @@ for epoch in range(EPOCHS):
             }
         )
 
-        if (i+1) == config['step_per_epoch']:
+        if (i+1) == config['step_per_epoch']//config['batch_size']:
             break
     
     print('='*100)
@@ -196,7 +201,7 @@ for epoch in range(EPOCHS):
 
     sample_text_for_completion = f"{start_story_tok}One"
     tok_in = encoding.encode(sample_text_for_completion, disallowed_special=())
-    model.generate(tok_in=tok_in, end_tok=100260)
+    model.generate(tok_in=tok_in, end_tok=100260, num_tokens=60)
 
 
 
