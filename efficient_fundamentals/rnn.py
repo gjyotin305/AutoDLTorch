@@ -2,6 +2,7 @@
 
 import torch
 import wandb
+import math
 import torch.nn as nn
 from tqdm import tqdm
 import tiktoken
@@ -9,8 +10,8 @@ from einops import rearrange
 from datasets import load_dataset
 
 config = {
-    'EPOCHS': 10,
-    'step_per_epoch': 10000,
+    'EPOCHS': 5,
+    'step_per_epoch': 1000000,
     'batch_size': 8
 }
 
@@ -181,14 +182,14 @@ for epoch in range(EPOCHS):
         optimizer.step()
         optimizer.zero_grad(set_to_none=True)
         pbar.set_postfix(
-            {"epoch": epoch, "step": i, "loss": loss.item()}
+            {"epoch": epoch+1, "step": i+1, "loss": loss.item(), 'ppl': math.exp(loss.item())}
         )
 
         pbar.update(1)
         wandb.log(
             {
                 'loss/train': loss.item(),
-                'epoch': epoch,
+                'epoch': epoch+1,
                 'step': i+1
             }
         )
