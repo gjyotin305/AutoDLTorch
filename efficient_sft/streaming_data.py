@@ -71,8 +71,7 @@ class StreamingITDataLoader:
     ) -> None:
         self.streamer_ds = load_dataset(
             ds_name, 
-            streaming=True, 
-            split='train'
+            split='train[100:200]'
         )
         self.batch_size = batch_size
         self.tokenizer = tokenizer

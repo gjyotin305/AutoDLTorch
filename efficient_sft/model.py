@@ -17,6 +17,38 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
 
+
+class ActivationStorage:
+    def __init__(self) -> None:
+        self._cache = {}
+    
+    def add_cache(self, layer, tensor):
+        if layer not in self._cache:
+            self._cache[layer] = tensor
+        else:
+            print('Already Exists')
+
+    def return_cache(self):
+        return self._cache
+
+
+class ActivationListStorage:
+    def __init__(self) -> None:
+        self._act_samples = {}
+    
+    def add_cache_sample(self, sample, act_cache: ActivationStorage):
+        if sample not in self._act_samples:
+            self._act_samples[sample] = act_cache.return_cache()
+        else:
+            print('Sample Already Exists')
+
+    def save_cache(self, filename):
+        torch.save(self._act_samples, filename)
+        print(f'Stored as {filename}')
+
+
+
+
 class QwenFastModel:
     def __init__(self, model_name, grad_ckpt: bool = False) -> None:
         self.model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.bfloat16)
@@ -144,6 +176,69 @@ class QwenFastModel:
             'hidden_states': hidden_states,
         }
 
+    def forward_w_activation(self, input_ids, labels=None, cce_impl=False, act_fn=None):
+        input_emb = self.model.model.embed_tokens(input_ids.to('cuda'))
+        _, seq_len, _ = input_emb.size()
+        hidden_states = input_emb
+        
+        position_ids = torch.arange(
+            0, 0 + seq_len, device='cuda'
+        ).unsqueeze(0)
+
+        if act_fn is None:
+            raise ValueError('This function requires `act_fn`')
+
+        position_embeddings = self.model.model.rotary_emb(hidden_states, position_ids)
+
+        for idx, layer in enumerate(self.model.model.layers):
+            if self.grad_ckpt_check:
+                outputs = self.decoder_forward_ckpt(
+                    layer=layer,
+                    hidden_states=hidden_states,
+                    position_embedding=position_embeddings
+                )
+                hidden_states = outputs[0]
+                act_fn.add_cache(f'layer_{idx+1}', hidden_states.detach())
+            else:
+                outputs = self.decoder_fast_forward(
+                    layer=layer,
+                    hidden_states=hidden_states,
+                    position_embedding=position_embeddings
+                )
+                hidden_states = outputs[0]
+                act_fn.add_cache(f'layer_{idx+1}', hidden_states.detach())
+           
+            
+        # Pre LM Head Layer Norm
+        if cce_impl and (labels is not None): 
+            # print('CCE')
+            hidden_states = self.model.model.norm(hidden_states)
+            loss = linear_cross_entropy(hidden_states, self.model.lm_head.weight, labels, impl='cce')
+            return {
+                'loss': loss,
+                'hidden_states': hidden_states,
+            }
+            # logits = self.model.lm_head(hidden_states)
+            # loss = None
+        else:
+            hidden_states = self.model.model.norm(hidden_states)
+            logits = self.model.lm_head(hidden_states)
+            loss = None
+
+        if labels is not None:
+            logits = logits[..., :-1, :].contiguous()
+            labels = labels[..., 1:].contiguous()
+            logits = logits.float()
+            loss = torch.nn.functional.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1), reduction='mean', ignore_index=-100)
+        
+        return {
+            'loss': loss,
+            'logits': logits,
+            'hidden_states': hidden_states,
+            'activation_cache': act_fn
+        }
+
+
     def generate(
         self,
         tokens,
@@ -182,18 +277,25 @@ def rotate_half(x):
     x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1) 
 
-# if __name__ == "__main__":
-# #  Example Usage: Run Forward Function to get logits(inference), loss(training)
-# #  Run Generate Function to get sample generations
-#     tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-3B-Instruct')
-#     dataset = StreamingITDataLoader(ds_name='tatsu-lab/alpaca', tokenizer=tokenizer)
-#     stream_data = dataset._return_stream_ds()
-#     model = QwenFastModel(model_name='Qwen/Qwen2.5-7B-Instruct', grad_ckpt=True)
-#     for item in stream_data:
-#         data = dataset.collator(item)
-#         print(data['input_ids'].shape, data['labels'].shape)
-#         input_ids = data['input_ids'].to('cuda')
-#         out = model.forward(input_ids)
-#         print(out)
-#         break
+if __name__ == "__main__":
+#  Example Usage: Run Forward Function to get logits(inference), loss(training)
+#  Run Generate Function to get sample generations
+    tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-3B-Instruct')
+    dataset = StreamingITDataLoader(ds_name='gjyotin305/alpaca-harmratio0.1', tokenizer=tokenizer)
+    stream_data = dataset._return_stream_ds()
+    model = QwenFastModel(model_name='Qwen/Qwen2.5-3B-Instruct', grad_ckpt=True)
+    act_list_storage = ActivationListStorage()
+    for idx, item in enumerate(stream_data):
+        data = dataset.collator(item)
+        act_cache = ActivationStorage()
+        print(data['input_ids'].shape, data['labels'].shape)
+        input_ids = data['input_ids'].to('cuda')
+        out = model.forward_w_activation(input_ids, act_fn=act_cache)
+        act_list_storage.add_cache_sample(f"sample_{idx}", act_cache=out['activation_cache'])
+        # print(out)
+        if idx == 100:
+            break
+    act_list_storage.save_cache('hundred_normal_samples.pt')
+    
 
+        
