@@ -213,6 +213,7 @@ class QwenFastModel:
         if cce_impl and (labels is not None): 
             # print('CCE')
             hidden_states = self.model.model.norm(hidden_states)
+            act_fn.add_cache('post_layerlm', hidden_states.detach())
             loss = linear_cross_entropy(hidden_states, self.model.lm_head.weight, labels, impl='cce')
             return {
                 'loss': loss,
@@ -222,6 +223,7 @@ class QwenFastModel:
             # loss = None
         else:
             hidden_states = self.model.model.norm(hidden_states)
+            act_fn.add_cache('post_layerlm', hidden_states.detach())
             logits = self.model.lm_head(hidden_states)
             loss = None
 
@@ -277,25 +279,25 @@ def rotate_half(x):
     x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1) 
 
-if __name__ == "__main__":
-#  Example Usage: Run Forward Function to get logits(inference), loss(training)
-#  Run Generate Function to get sample generations
-    tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-3B-Instruct')
-    dataset = StreamingITDataLoader(ds_name='gjyotin305/alpaca-harmratio0.1', tokenizer=tokenizer)
-    stream_data = dataset._return_stream_ds()
-    model = QwenFastModel(model_name='Qwen/Qwen2.5-3B-Instruct', grad_ckpt=True)
-    act_list_storage = ActivationListStorage()
-    for idx, item in enumerate(stream_data):
-        data = dataset.collator(item)
-        act_cache = ActivationStorage()
-        print(data['input_ids'].shape, data['labels'].shape)
-        input_ids = data['input_ids'].to('cuda')
-        out = model.forward_w_activation(input_ids, act_fn=act_cache)
-        act_list_storage.add_cache_sample(f"sample_{idx}", act_cache=out['activation_cache'])
-        # print(out)
-        if idx == 100:
-            break
-    act_list_storage.save_cache('hundred_normal_samples.pt')
+# if __name__ == "__main__":
+# #  Example Usage: Run Forward Function to get logits(inference), loss(training)
+# #  Run Generate Function to get sample generations
+#     tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-3B-Instruct')
+#     dataset = StreamingITDataLoader(ds_name='gjyotin305/alpaca-harmratio0.1', tokenizer=tokenizer)
+#     stream_data = dataset._return_stream_ds()
+#     model = QwenFastModel(model_name='Qwen/Qwen2.5-3B-Instruct', grad_ckpt=True)
+#     act_list_storage = ActivationListStorage()
+#     for idx, item in enumerate(stream_data):
+#         data = dataset.collator(item)
+#         act_cache = ActivationStorage()
+#         print(data['input_ids'].shape, data['labels'].shape)
+#         input_ids = data['input_ids'].to('cuda')
+#         out = model.forward_w_activation(input_ids, act_fn=act_cache)
+#         act_list_storage.add_cache_sample(f"sample_{idx}", act_cache=out['activation_cache'])
+#         # print(out)
+#         if idx == 100:
+#             break
+#     act_list_storage.save_cache('hundred_normal_samples.pt')
     
 
         
